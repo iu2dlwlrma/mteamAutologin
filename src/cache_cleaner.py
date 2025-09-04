@@ -100,19 +100,30 @@ class CacheCleaner:
                         except Exception as e:
                             self.logger.warning(f"删除临时目录失败 {temp_chrome_dir}: {e}")
             
-            # 清理项目内的任何缓存目录
+            # 清理项目内的缓存目录（包括Chrome用户数据目录）
             project_root = Path(__file__).parent.parent
             cache_dirs = [
                 project_root / "cache",
-                project_root / "browser_cache",
-                project_root / ".chrome"
+                project_root / "browser_cache", 
+                project_root / ".chrome",
+                project_root / "chrome_user_data"  # Chrome真正的用户数据缓存
             ]
             
             for cache_dir in cache_dirs:
                 if cache_dir.exists() and cache_dir.is_dir():
                     try:
+                        # 获取目录大小
+                        dir_size = sum(f.stat().st_size for f in cache_dir.rglob('*') if f.is_file())
+                        dir_size_mb = dir_size / (1024 * 1024)
+                        
                         shutil.rmtree(cache_dir)
-                        self.logger.info(f"已删除项目缓存目录: {cache_dir}")
+                        self.logger.info(f"已删除项目缓存目录: {cache_dir} (释放 {dir_size_mb:.1f} MB)")
+                        
+                        # 如果是Chrome用户数据目录，重新创建空目录
+                        if cache_dir.name == "chrome_user_data":
+                            cache_dir.mkdir(exist_ok=True)
+                            self.logger.info(f"重新创建Chrome用户数据目录: {cache_dir}")
+                            
                     except Exception as e:
                         self.logger.warning(f"删除项目缓存目录失败 {cache_dir}: {e}")
             

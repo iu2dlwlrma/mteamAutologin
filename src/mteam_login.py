@@ -166,8 +166,12 @@ class MTeamLogin:
         chrome_options.add_argument('--disable-extensions')
         
         import tempfile
-        user_data_dir = tempfile.mkdtemp()
-        chrome_options.add_argument(f'--user-data-dir={user_data_dir}')
+        import os
+        # 使用项目内固定的Chrome用户数据目录，便于缓存清理
+        project_root = Path(__file__).parent.parent
+        chrome_user_data_dir = project_root / "chrome_user_data"
+        chrome_user_data_dir.mkdir(exist_ok=True)
+        chrome_options.add_argument(f'--user-data-dir={chrome_user_data_dir}')
         
         if self.config.get('headless', False):
             chrome_options.add_argument('--headless')
