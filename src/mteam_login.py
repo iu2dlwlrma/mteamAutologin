@@ -524,11 +524,16 @@ class MTeamLogin:
             ]
             send_code_button = self._find_element_by_selectors(send_button_selectors, "发送验证码按钮")
             
+            # 记录发送验证码的时间戳
+            import time
+            send_time = None
+            
             if send_code_button:
                 if send_code_button.get_attribute("disabled"):
                     time.sleep(2)  # 等待按钮可用
                 if self._click_element_safely(send_code_button):
-                    self.logger.info("成功点击发送验证码按钮")
+                    send_time = time.time()  # 记录发送时间
+                    self.logger.info(f"成功点击发送验证码按钮，发送时间: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(send_time))}")
                     time.sleep(5)  # 等待邮件发送
                 else:
                     self.logger.warning("点击发送验证码按钮失败")
@@ -547,7 +552,8 @@ class MTeamLogin:
             verification_code = None
             for attempt in range(5):
                 self.logger.info(f"第{attempt+1}次尝试获取验证码...")
-                verification_code = self.gmail_client.get_verification_code(timeout=60)
+                # 传递发送时间，确保获取新邮件
+                verification_code = self.gmail_client.get_verification_code(timeout=60, sent_after_time=send_time)
                 if verification_code:
                     break
                 if attempt < 4:  # 不是最后一次尝试

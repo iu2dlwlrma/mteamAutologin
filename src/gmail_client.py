@@ -27,12 +27,13 @@ class GmailClient:
         # 使用根logger确保日志正常输出
         self.logger = logging.getLogger()
         
-    def get_verification_code_via_imap(self, timeout: int = 300) -> Optional[str]:
+    def get_verification_code_via_imap(self, timeout: int = 300, sent_after_time: float = None) -> Optional[str]:
         """
         通过 IMAP 协议获取验证码
         
         Args:
             timeout: 超时时间（秒）
+            sent_after_time: 只查找在此时间戳之后收到的邮件（Unix时间戳）
             
         Returns:
             验证码字符串，如果未找到则返回None
@@ -104,8 +105,15 @@ class GmailClient:
             # 选择收件箱
             mail.select("inbox")
             
-            # 设置搜索时间范围（最近2分钟，确保是最新的）
-            search_time = (datetime.now() - timedelta(minutes=2)).strftime("%d-%b-%Y")
+            # 设置搜索时间范围
+            if sent_after_time:
+                # 使用指定的发送时间，稍微往前推30秒以确保不遗漏
+                search_datetime = datetime.fromtimestamp(sent_after_time - 30)
+                search_time = search_datetime.strftime("%d-%b-%Y")
+                self.logger.info(f"搜索 {search_datetime.strftime('%Y-%m-%d %H:%M:%S')} 之后的邮件")
+            else:
+                # 默认搜索最近2分钟
+                search_time = (datetime.now() - timedelta(minutes=2)).strftime("%d-%b-%Y")
             
             start_time = time.time()
             while time.time() - start_time < timeout:
@@ -141,7 +149,7 @@ class GmailClient:
                                     # 获取最新的邮件（邮件ID通常是按时间排序的，最后一个是最新的）
                                     latest_id = message_ids[-1]
                                     self.logger.info(f"找到邮件ID: {latest_id}")
-                                    verification_code = self._extract_code_from_email(mail, latest_id)
+                                    verification_code = self._extract_code_from_email(mail, latest_id, sent_after_time)
                                     if verification_code:
                                         self.logger.info(f"成功从最新邮件中提取验证码: {verification_code}")
                                         mail.close()
@@ -189,13 +197,14 @@ class GmailClient:
             
             return None
             
-    def _extract_code_from_email(self, mail, message_id: bytes) -> Optional[str]:
+    def _extract_code_from_email(self, mail, message_id: bytes, sent_after_time: float = None) -> Optional[str]:
         """
         从邮件中提取验证码
         
         Args:
             mail: IMAP连接对象
             message_id: 邮件ID
+            sent_after_time: 只处理在此时间戳之后收到的邮件（Unix时间戳）
             
         Returns:
             验证码字符串
@@ -214,6 +223,24 @@ class GmailClient:
             # 记录邮件发送方和主题，方便调试
             sender = message.get('From', '未知发送方')
             subject = message.get('Subject', '无主题')
+            
+            # 检查邮件时间是否符合要求
+            if sent_after_time:
+                date_header = message.get('Date')
+                if date_header:
+                    try:
+                        from email.utils import parsedate_to_datetime
+                        email_time = parsedate_to_datetime(date_header)
+                        email_timestamp = email_time.timestamp()
+                        
+                        if email_timestamp < sent_after_time:
+                            self.logger.info(f"跳过旧邮件 - 发送方: {sender}, 时间: {email_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                            return None
+                        else:
+                            self.logger.info(f"处理新邮件 - 发送方: {sender}, 时间: {email_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                    except Exception as time_error:
+                        self.logger.warning(f"解析邮件时间失败，继续处理: {time_error}")
+            
             self.logger.info(f"正在处理邮件 - 发送方: {sender}, 主题: {subject}")
             
             # 获取邮件正文
@@ -298,15 +325,19 @@ class GmailClient:
             
         return body
         
-    def get_verification_code(self, timeout: int = 300) -> Optional[str]:
+    def get_verification_code(self, timeout: int = 300, sent_after_time: float = None) -> Optional[str]:
         """
         获取验证码的主要入口方法（仅使用IMAP）
         
         Args:
             timeout: 超时时间（秒）
+            sent_after_time: 只查找在此时间戳之后收到的邮件（Unix时间戳）
             
         Returns:
             验证码字符串，如果未找到则返回None
         """
         self.logger.info("开始使用 IMAP 方法获取验证码...")
-        return self.get_verification_code_via_imap(timeout)
+        if sent_after_time:
+            import time
+            self.logger.info(f"只查找在 {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(sent_after_time))} 之后收到的邮件")
+        return self.get_verification_code_via_imap(timeout, sent_after_time)
