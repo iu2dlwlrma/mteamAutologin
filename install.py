@@ -28,6 +28,7 @@ def print_banner():
 ║            M-Team 自动登录工具 - 全自动安装程序                 ║
 ║                                                              ║
 ║  此脚本将下载Chrome {CHROME_VERSION}二进制版本到项目目录       ║
+║  🍎 macOS用户: 自动处理权限和Gatekeeper安全设置               ║
 ╚══════════════════════════════════════════════════════════════╝
     """
     print(banner)
@@ -338,6 +339,9 @@ def download_chrome(system, arch):
         chrome_exe = find_chrome_executable(chrome_dir, system)
         if chrome_exe:
             print("✅ Chrome浏览器已存在，跳过下载")
+            # macOS特殊处理：即使已存在也要确保权限正确
+            if system == "darwin":
+                setup_macos_chrome_permissions(chrome_exe)
             return True, str(chrome_exe)
     
     try:
@@ -367,6 +371,10 @@ def download_chrome(system, arch):
                 chrome_exe = find_chrome_executable(chrome_dir, system)
                 
                 if chrome_exe:
+                    # macOS特殊处理：设置权限和绕过Gatekeeper
+                    if system == "darwin":
+                        setup_macos_chrome_permissions(chrome_exe)
+                    
                     print(f"✅ Chrome二进制版本安装完成: {chrome_exe}")
                     print(f"   Chrome版本: {CHROME_VERSION}")
                     return True, str(chrome_exe)
@@ -379,6 +387,39 @@ def download_chrome(system, arch):
         return False, None
     
     return False, None
+
+def setup_macos_chrome_permissions(chrome_exe_path):
+    """为macOS Chrome设置必要的权限和绕过Gatekeeper"""
+    print("🍎 设置macOS Chrome权限...")
+    
+    try:
+        chrome_exe = Path(chrome_exe_path)
+        chrome_app = chrome_exe.parent.parent.parent  # 获取.app目录
+        
+        # 1. 设置Chrome可执行文件的执行权限
+        print(f"   设置执行权限: {chrome_exe}")
+        os.chmod(chrome_exe, 0o755)
+        
+        # 2. 移除Gatekeeper的隔离属性（绕过安全检查）
+        print(f"   移除Gatekeeper隔离属性: {chrome_app}")
+        try:
+            subprocess.run([
+                "xattr", "-rd", "com.apple.quarantine", str(chrome_app)
+            ], check=False, capture_output=True)
+        except FileNotFoundError:
+            print("   ⚠️ xattr命令未找到，跳过Gatekeeper处理")
+        
+        # 3. 设置整个应用包的权限
+        print(f"   设置应用包权限: {chrome_app}")
+        subprocess.run([
+            "chmod", "-R", "755", str(chrome_app)
+        ], check=False, capture_output=True)
+        
+        print("✅ macOS Chrome权限设置完成")
+        
+    except Exception as e:
+        print(f"⚠️ macOS权限设置失败: {e}")
+        print("   程序将继续运行，如果遇到权限问题请手动设置")
 
 def find_chrome_executable(chrome_dir, system):
     """查找Chrome可执行文件"""

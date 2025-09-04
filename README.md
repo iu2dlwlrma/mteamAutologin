@@ -229,18 +229,53 @@ deactivate
 
 ## 故障排除
 
+### macOS权限问题 🍎
+
+如果在macOS上遇到 "Failed to create Chrome process" 错误：
+
+#### 自动修复（推荐）
+
+重新运行安装脚本，它会自动设置权限：
+
+```bash
+python3 install.py
+```
+
+#### 手动修复
+
+如果自动修复失败，请手动执行以下命令：
+
+```bash
+# 1. 设置Chrome可执行文件权限
+chmod +x "bin/browsers/chrome/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"
+
+# 2. 移除Gatekeeper隔离属性
+xattr -rd com.apple.quarantine "bin/browsers/chrome/chrome-mac-arm64/Google Chrome for Testing.app"
+
+# 3. 设置整个应用包权限
+chmod -R 755 "bin/browsers/chrome/chrome-mac-arm64/Google Chrome for Testing.app"
+```
+
+#### 系统设置
+
+如果仍然失败，可能需要在 **系统偏好设置** → **安全性与隐私** 中：
+
+1. 点击 “允许” Chrome for Testing 运行
+2. 或者在 "开发者工具" 中添加 Terminal 应用
+
 ### 验证码获取失败
 
 1. 检查Gmail应用专用密码是否正确
 2. 确保启用了两步验证
 3. 检查网络连接
-4. 查看日志文件 `mteam_login.log`
+4. 查看日志文件 `logs/mteam_login_*.log`
 
 ### ChromeDriver问题
 
 1. 确保安装了Chrome浏览器
 2. ChromeDriver会自动下载，如果失败可手动安装
 3. 检查Chrome版本与ChromeDriver版本是否匹配
+4. **macOS用户**: 确保ChromeDriver有执行权限 (`chmod +x bin/drivers/chromedriver`)
 
 ## 日志文件
 
