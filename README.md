@@ -51,16 +51,38 @@ python install.py
 或者直接双击运行：
 
 - Windows: `start.bat`
-- Linux/macOS: `start.sh`
+- Linux/macOS: `start.sh` (首次需要设置执行权限，见下方说明)
 
-### 2. 配置Gmail应用专用密码
+### 2. 设置脚本执行权限 (macOS/Linux)
+
+**⚠️ 重要**: 在macOS和Linux系统下，首次使用需要给脚本设置执行权限：
+
+```bash
+# 给start.sh脚本设置执行权限
+chmod +x start.sh
+
+# 然后就可以直接运行
+./start.sh
+```
+
+**或者使用以下任一方法**：
+
+```bash
+# 方法1: 直接用bash运行
+bash start.sh
+
+# 方法2: 使用Python直接安装
+python3 install.py
+```
+
+### 3. 配置Gmail应用专用密码
 
 1. 登录Google账户
 2. 进入 安全性 → 两步验证
 3. 生成应用专用密码（16位字符）用于IMAP访问
 4. 记录这个密码
 
-### 3. 编辑配置文件
+### 4. 编辑配置文件
 
 安装完成后，编辑 `config/config.json` 文件，将默认值替换为真实信息：
 
@@ -81,7 +103,7 @@ python install.py
 }
 ```
 
-### 4. 运行程序
+### 5. 运行程序
 
 ```bash
 # 方法1: 使用Python直接运行
@@ -169,6 +191,9 @@ deactivate
 #### Linux/macOS
 
 ```bash
+# 首次使用设置执行权限
+chmod +x start.sh
+
 # 激活虚拟环境
 source venv/bin/activate
 
