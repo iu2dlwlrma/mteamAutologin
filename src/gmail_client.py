@@ -38,12 +38,34 @@ class GmailClient:
         """
         try:
             # 连接到Gmail IMAP服务器
+            self.logger.info(f"正在连接Gmail IMAP服务器 (邮箱: {self.config['email'][:3]}***{self.config['email'][-10:]})")
             context = ssl.create_default_context()
             mail = imaplib.IMAP4_SSL("imap.gmail.com", 993, ssl_context=context)
             
             # 登录
-            mail.login(self.config["email"], self.config["password"])
-            self.logger.info("成功连接到Gmail IMAP服务器")
+            self.logger.info("正在进行IMAP认证...")
+            try:
+                mail.login(self.config["email"], self.config["password"])
+                self.logger.info("✅ Gmail IMAP认证成功")
+            except imaplib.IMAP4.error as login_error:
+                error_msg = str(login_error)
+                self.logger.error(f"❌ Gmail IMAP认证失败: {error_msg}")
+                
+                # 提供详细的错误诊断
+                if "AUTHENTICATIONFAILED" in error_msg:
+                    self.logger.error("🔍 认证失败原因分析:")
+                    self.logger.error("   1. 检查Gmail应用专用密码是否正确")
+                    self.logger.error("   2. 确保Gmail账户已启用两步验证")
+                    self.logger.error("   3. 应用专用密码应为16位字符，不含空格")
+                    self.logger.error("   4. 检查邮箱地址是否正确")
+                    self.logger.error("   5. 尝试重新生成应用专用密码")
+                elif "Invalid credentials" in error_msg:
+                    self.logger.error("🔍 无效凭据 - 请检查:")
+                    self.logger.error("   • 邮箱地址格式是否正确")
+                    self.logger.error("   • 应用专用密码是否为最新生成的")
+                    self.logger.error("   • 是否使用了Gmail账户密码而非应用专用密码")
+                
+                raise login_error
             
             # 选择收件箱
             mail.select("inbox")
@@ -109,6 +131,28 @@ class GmailClient:
             
         except Exception as e:
             self.logger.error(f"IMAP连接失败: {e}")
+            
+            # 提供更详细的错误诊断
+            error_msg = str(e)
+            if "SSL" in error_msg or "EOF" in error_msg:
+                self.logger.error("🌐 SSL连接问题 - 可能的解决方案:")
+                self.logger.error("   1. 检查网络连接是否稳定")
+                self.logger.error("   2. 尝试更换网络环境")
+                self.logger.error("   3. 检查防火墙是否阻止IMAP连接")
+                self.logger.error("   4. 稍后重试，可能是Gmail服务器暂时问题")
+            elif "AUTHENTICATIONFAILED" in error_msg or "Invalid credentials" in error_msg:
+                self.logger.error("🔐 Gmail认证失败 - 解决方案:")
+                self.logger.error("   1. 重新生成Gmail应用专用密码")
+                self.logger.error("   2. 访问: https://myaccount.google.com/apppasswords")
+                self.logger.error("   3. 删除旧密码，创建新的'M-Team自动登录'密码")
+                self.logger.error("   4. 确保密码复制时没有多余空格")
+                self.logger.error("   5. 确认两步验证已启用")
+            elif "timeout" in error_msg.lower():
+                self.logger.error("⏰ 连接超时 - 可能的解决方案:")
+                self.logger.error("   1. 检查网络延迟")
+                self.logger.error("   2. 尝试使用VPN")
+                self.logger.error("   3. 稍后重试")
+            
             return None
             
     def _extract_code_from_email(self, mail, message_id: bytes) -> Optional[str]:

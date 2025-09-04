@@ -228,10 +228,10 @@ class MTeamLogin:
             # 执行反检测脚本
             self._setup_stealth_mode(driver)
             
-            # 设置各种超时时间
-            driver.implicitly_wait(15)
-            driver.set_page_load_timeout(30)
-            driver.set_script_timeout(30)
+            # 设置各种超时时间（优化等待时间）
+            driver.implicitly_wait(3)  # 减少到3秒，提高响应速度
+            driver.set_page_load_timeout(20)  # 减少页面加载超时
+            driver.set_script_timeout(15)     # 减少脚本执行超时
             
             try:
                 chrome_version = driver.capabilities['browserVersion']
@@ -442,7 +442,7 @@ class MTeamLogin:
             
     def _is_email_verification_page(self) -> bool:
         """
-        检测是否在邮箱验证页面
+        检测是否在邮箱验证页面（优化版，减少等待时间）
         
         Returns:
             bool: 是否为邮箱验证页面
@@ -450,24 +450,38 @@ class MTeamLogin:
         try:
             current_url = self.driver.current_url
             page_title = self.driver.title
-            page_source = self.driver.page_source
             
-            # 检查URL、标题或页面内容中的邮箱验证关键词
-            verification_indicators = [
-                "verify" in current_url.lower(),
-                "2fa" in current_url.lower(),
-                "验证" in page_title,
-                "verification" in page_title.lower(),
-                "邮箱" in page_source,
-                "验证码" in page_source,
-                "verification" in page_source.lower(),
-                "email" in page_source.lower() and "code" in page_source.lower()
+            # 优先检查URL和标题（最快速的检查）
+            url_indicators = ["verify", "2fa", "verification", "email"]
+            if any(keyword in current_url.lower() for keyword in url_indicators):
+                self.logger.info(f"✅ URL中检测到邮箱验证关键词: {current_url}")
+                return True
+            
+            title_indicators = ["验证", "verification", "2fa", "email"]
+            if any(keyword in page_title.lower() for keyword in title_indicators):
+                self.logger.info(f"✅ 标题中检测到邮箱验证关键词: {page_title}")
+                return True
+            
+            # 使用显式等待快速检查关键元素存在
+            wait = WebDriverWait(self.driver, 1)  # 只等待1秒
+            verification_elements = [
+                "//input[@placeholder*='验证码']",
+                "//input[@placeholder*='verification']",
+                "//input[@placeholder*='code']",
+                "//button[contains(text(), '验证')]",
+                "//button[contains(text(), '获取验证码')]"
             ]
             
-            is_verification_page = any(verification_indicators)
-            self.logger.info(f"邮箱验证页面检测结果: {is_verification_page}")
+            for xpath in verification_elements:
+                try:
+                    wait.until(EC.presence_of_element_located((By.XPATH, xpath)))
+                    self.logger.info(f"✅ 找到邮箱验证元素: {xpath}")
+                    return True
+                except TimeoutException:
+                    continue
             
-            return is_verification_page
+            self.logger.info("❌ 邮箱验证页面检测结果: False")
+            return False
             
         except Exception as e:
             self.logger.error(f"检测邮箱验证页面时发生错误: {e}")
@@ -743,7 +757,7 @@ class MTeamLogin:
             
     def is_login_successful(self) -> bool:
         """
-        检查是否登录成功
+        检查是否登录成功（优化版，减少等待时间）
         
         Returns:
             bool: 是否登录成功
@@ -755,61 +769,46 @@ class MTeamLogin:
             self.logger.info(f"检查登录状态 - URL: {current_url}")
             self.logger.info(f"检查登录状态 - 标题: {page_title}")
             
-            # 1. 检查是否还在登录页面
+            # 1. 快速检查：如果还在登录页面，直接返回失败
             if "login" in current_url.lower():
-                self.logger.info("仍在登录页面，登录可能失败")
+                self.logger.info("仍在登录页面，登录失败")
                 return False
             
-            # 2. 检查URL是否跳转到主页或用户界面
+            # 2. 快速检查：URL跳转成功是最可靠的标志
             success_urls = ['index', 'home', 'main', 'dashboard', 'user', 'member', 'browse', 'torrents']
             if any(keyword in current_url.lower() for keyword in success_urls):
-                self.logger.info(f"URL跳转成功: {current_url}")
+                self.logger.info(f"✅ URL跳转成功: {current_url}")
+                return True
+            
+            # 3. 快速检查：页面标题改变通常表示登录成功
+            if "登录" not in page_title and "login" not in page_title.lower() and page_title.strip():
+                self.logger.info(f"✅ 页面标题已改变，登录成功: {page_title}")
                 return True
                 
-            # 3. 检查页面标题是否改变
-            if "登录" not in page_title and "login" not in page_title.lower():
-                self.logger.info(f"页面标题已改变，可能登录成功: {page_title}")
-                
-            # 4. 检查是否有用户相关元素
-            user_elements = [
-                "//a[contains(@href, 'logout') or contains(text(), '退出') or contains(text(), 'Logout') or contains(text(), '登出')]",
-                "//span[contains(@class, 'username') or contains(@class, 'user')]",
-                "//div[contains(@class, 'user') or contains(@class, 'member')]",
-                "//a[contains(@href, 'user.php')]",
-                "//a[contains(@href, 'usercp')]",
-                "//div[contains(@class, 'navbar')]//a[contains(text(), '用户')]"
+            # 4. 简化的元素检查（只检查最常见的几个，使用显式等待）
+            wait = WebDriverWait(self.driver, 1)  # 只等待1秒
+            
+            # 优先检查最可能存在的元素
+            quick_check_elements = [
+                "//a[contains(@href, 'logout')]",      # 退出链接最常见
+                "//a[contains(text(), '退出')]",        # 中文退出链接
+                "//div[contains(@class, 'user')]"      # 用户相关div
             ]
             
-            for xpath in user_elements:
+            for xpath in quick_check_elements:
                 try:
-                    element = self.driver.find_element(By.XPATH, xpath)
-                    self.logger.info(f"找到用户元素: {xpath} -> {element.text}")
+                    element = wait.until(EC.presence_of_element_located((By.XPATH, xpath)))
+                    self.logger.info(f"✅ 找到登录标志元素: {xpath}")
                     return True
-                except NoSuchElementException:
-                    continue
-                    
-            # 5. 检查是否有种子列表或主要内容
-            content_elements = [
-                "//table[contains(@class, 'torrents')]",
-                "//div[contains(@class, 'torrent')]", 
-                "//a[contains(@href, 'download')]",
-                "//span[contains(text(), 'GB') or contains(text(), 'MB')]"
-            ]
-            
-            for xpath in content_elements:
-                try:
-                    self.driver.find_element(By.XPATH, xpath)
-                    self.logger.info(f"找到内容元素: {xpath}")
-                    return True
-                except NoSuchElementException:
+                except TimeoutException:
                     continue
             
-            # 6. 最后检查：如果不在登录页且页面有实际内容，可能登录成功
-            if "login" not in current_url.lower() and len(self.driver.page_source) > 10000:
-                self.logger.info("页面内容丰富，可能已登录成功")
+            # 5. 最后检查：页面内容判断（不在登录页面且有足够内容）
+            if "login" not in current_url.lower() and len(self.driver.page_source) > 5000:
+                self.logger.info("✅ 页面内容丰富且不在登录页面，判断为登录成功")
                 return True
                 
-            self.logger.info("所有检查都未通过，登录可能失败")
+            self.logger.info("❌ 所有快速检查都未通过，登录可能失败")
             return False
             
         except Exception as e:
