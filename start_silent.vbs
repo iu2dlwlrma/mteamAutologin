@@ -17,7 +17,7 @@ If objFSO.FileExists(strBatchFile) Then
     ' Run start.bat silently
     ' WindowStyle: 0=Hidden, 1=Normal, 2=Minimized, 3=Maximized
     ' Third parameter True = wait for completion
-    ' objShell.Run Chr(34) & strBatchFile & Chr(34), 0, True
+    objShell.Run Chr(34) & strBatchFile & Chr(34), 0, True
     ' Optional: Show modern Windows Toast notification (comment out for complete silence)
     Call ShowToastNotification("M-Team Auto Login", "Login completed successfully!", "success")
 Else
