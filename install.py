@@ -646,6 +646,15 @@ def create_sample_config(chrome_path=None, chromedriver_path=None, venv_python=N
                     "password": "your_gmail_app_password",
                     "method": "imap"
                 },
+                "email_management": {
+                    "delete_after_use": False,  # 是否在获取验证码后删除邮件
+                    "delete_wait_seconds": 5    # 删除前等待秒数
+                },
+                "anti_detection": {
+                    "enable_human_simulation": True,  # 是否启用人类行为模拟
+                    "random_delays": True,            # 是否使用随机延迟
+                    "typing_simulation": True         # 是否模拟真实打字
+                },
                 "headless": True,
                 "user_agent": f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{CHROME_VERSION} Safari/537.36"
             }

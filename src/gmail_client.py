@@ -195,6 +195,20 @@ class GmailClient:
                                             verification_code = self._extract_code_from_email(mail, msg_id, sent_after_time)
                                             if verification_code:
                                                 self.logger.info(f"✅ 成功从邮件 {msg_id} 中提取验证码: {verification_code}")
+                                                
+                                                # 根据配置决定是否删除邮件
+                                                email_config = self.config.get('email_management', {})
+                                                if email_config.get('delete_after_use', False):
+                                                    try:
+                                                        wait_time = email_config.get('delete_wait_seconds', 5)
+                                                        self.logger.info(f"等待{wait_time}秒后删除验证码邮件...")
+                                                        time.sleep(wait_time)
+                                                        self._delete_email_safely(mail, msg_id)
+                                                    except Exception as delete_error:
+                                                        self.logger.warning(f"删除邮件失败: {delete_error}")
+                                                else:
+                                                    self.logger.info("📧 邮件删除功能已禁用，验证码邮件将保留")
+                                                
                                                 mail.close()
                                                 mail.logout()
                                                 return verification_code
@@ -270,6 +284,35 @@ class GmailClient:
                 self.logger.error("   3. 稍后重试")
             
             return None
+    
+    def _delete_email_safely(self, mail, message_id: bytes) -> bool:
+        """
+        安全地删除指定的邮件
+        
+        Args:
+            mail: IMAP连接对象
+            message_id: 邮件ID
+            
+        Returns:
+            bool: 删除是否成功
+        """
+        try:
+            # 标记邮件为已删除
+            mail.store(message_id, '+FLAGS', '\\Deleted')
+            
+            # 执行删除操作
+            result = mail.expunge()
+            
+            if result[0] == 'OK':
+                self.logger.info(f"✅ 已删除验证码邮件 (ID: {message_id.decode()})")
+                return True
+            else:
+                self.logger.warning(f"删除邮件失败: {result}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"删除邮件时发生错误: {e}")
+            return False
             
     def _extract_code_from_email(self, mail, message_id: bytes, sent_after_time: float = None) -> Optional[str]:
         """

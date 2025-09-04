@@ -62,7 +62,6 @@ class MTeamLogin:
         self.config = self.load_config(config_file)
         self.driver = None
         self.gmail_client = None
-        self.temp_user_data = None  # 临时用户数据目录路径
         
         # 网站URLs
         self.login_url = "https://kp.m-team.cc/login"
@@ -160,29 +159,13 @@ class MTeamLogin:
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
         chrome_options.add_experimental_option('useAutomationExtension', False)
         
-        # 禁用所有缓存和用户数据持久化，确保每次都是全新会话
-        chrome_options.add_argument('--incognito')  # 隐身模式
-        chrome_options.add_argument('--disable-plugins')
-        chrome_options.add_argument('--disable-extensions')
-        chrome_options.add_argument('--disable-web-security')
-        chrome_options.add_argument('--disable-features=VizDisplayCompositor')
+        # 使用最小化的chrome选项，避免被检测为自动化
+        # 减少日志输出
         chrome_options.add_argument('--disable-logging')
         chrome_options.add_argument('--log-level=3')
-        chrome_options.add_argument('--disable-dev-tools')
-        chrome_options.add_argument('--no-first-run')
-        
-        # 禁用各种缓存
-        chrome_options.add_argument('--disable-application-cache')
-        chrome_options.add_argument('--disable-background-timer-throttling')
-        chrome_options.add_argument('--disable-backgrounding-occluded-windows')
-        chrome_options.add_argument('--disable-renderer-backgrounding')
-        chrome_options.add_argument('--disable-background-networking')
-        
-        # 使用临时目录作为用户数据目录（会话结束后自动清理）
-        import tempfile
-        self.temp_user_data = tempfile.mkdtemp(prefix='mteam_temp_')
-        chrome_options.add_argument(f'--user-data-dir={self.temp_user_data}')
-        self.logger.info(f"使用临时用户数据目录: {self.temp_user_data}")
+        #chrome_options.add_argument('--incognito')  # 隐身模式
+        # 不设置任何用户数据目录，使用Chrome默认行为
+        self.logger.info("使用Chrome默认会话管理")
         
         if self.config.get('headless', False):
             chrome_options.add_argument('--headless')
@@ -273,6 +256,17 @@ class MTeamLogin:
             self.driver = self.init_driver()
             self.logger.info("正在访问 M-Team 登录页面...")
             
+            # 根据配置启用反检测功能
+            import random
+            anti_detection = self.config.get('anti_detection', {})
+            
+            if anti_detection.get('enable_human_simulation', True):
+                initial_delay = random.uniform(3, 8)
+                self.logger.info(f"模拟用户思考时间，等待 {initial_delay:.1f} 秒...")
+                time.sleep(initial_delay)
+            else:
+                self.logger.info("跳过人类行为模拟延迟")
+            
             # 访问登录页面，增加重试机制
             max_retries = 3
             for attempt in range(max_retries):
@@ -280,8 +274,14 @@ class MTeamLogin:
                     self.logger.info(f"尝试访问登录页面 (第{attempt + 1}次)...")
                     self.driver.get(self.login_url)
                     
-                    # 等待页面加载完成
-                    time.sleep(5)
+                    # 根据配置决定是否使用随机延迟
+                    if anti_detection.get('random_delays', True):
+                        load_delay = random.uniform(4, 8)
+                        self.logger.info(f"等待页面加载完成 ({load_delay:.1f}秒)...")
+                        time.sleep(load_delay)
+                    else:
+                        self.logger.info("等待页面加载完成...")
+                        time.sleep(3)  # 固定延迟
                     
                     # 检查页面是否正常加载
                     current_url = self.driver.current_url
@@ -360,10 +360,25 @@ class MTeamLogin:
                 self.logger.error("未找到用户名输入框，已保存截图和页面源码")
                 raise Exception("未找到用户名输入框")
             
-            # 输入用户名
+            # 输入用户名，根据配置决定是否模拟真实用户输入
             username_input.clear()
-            username_input.send_keys(self.config["mteam"]["username"])
-            self.logger.info("用户名已输入")
+            username = self.config["mteam"]["username"]
+            
+            if anti_detection.get('typing_simulation', True):
+                # 模拟逐字符输入
+                for char in username:
+                    username_input.send_keys(char)
+                    time.sleep(random.uniform(0.05, 0.15))  # 随机打字速度
+                
+                # 用户思考密码的时间
+                think_delay = random.uniform(1, 3)
+                self.logger.info(f"用户名已输入，模拟思考时间 {think_delay:.1f}秒")
+                time.sleep(think_delay)
+            else:
+                # 直接输入
+                username_input.send_keys(username)
+                self.logger.info("用户名已输入")
+                time.sleep(0.5)  # 简短延迟
             
             # 输入密码
             password_selectors = [
@@ -384,8 +399,23 @@ class MTeamLogin:
                 raise Exception("未找到密码输入框")
                 
             password_input.clear()
-            password_input.send_keys(self.config["mteam"]["password"])
-            self.logger.info("密码已输入")
+            password = self.config["mteam"]["password"]
+            
+            if anti_detection.get('typing_simulation', True):
+                # 模拟逐字符输入密码
+                for char in password:
+                    password_input.send_keys(char)
+                    time.sleep(random.uniform(0.03, 0.12))  # 密码输入稍快一些
+                
+                # 用户确认信息的时间
+                confirm_delay = random.uniform(1.5, 4)
+                self.logger.info(f"密码已输入，模拟确认时间 {confirm_delay:.1f}秒")
+                time.sleep(confirm_delay)
+            else:
+                # 直接输入密码
+                password_input.send_keys(password)
+                self.logger.info("密码已输入")
+                time.sleep(0.8)  # 简短延迟
             
             # 点击登录按钮
             login_selectors = [
@@ -407,12 +437,33 @@ class MTeamLogin:
                 # self.driver.save_screenshot("debug_login_button.png")
                 raise Exception("未找到登录按钮")
                 
-            login_button.click()
-            self.logger.info("登录按钮已点击")
+            # 添加鼠标移动模拟（可选）
+            if anti_detection.get('enable_human_simulation', True):
+                try:
+                    from selenium.webdriver.common.action_chains import ActionChains
+                    # 模拟鼠标移动到按钮
+                    actions = ActionChains(self.driver)
+                    actions.move_to_element(login_button)
+                    actions.pause(random.uniform(0.2, 0.8))  # 悬停一下
+                    actions.click()
+                    actions.perform()
+                    self.logger.info("模拟鼠标移动并点击登录按钮")
+                except Exception as e:
+                    # 如果模拟失败，使用普通点击
+                    login_button.click()
+                    self.logger.info("登录按钮已点击")
+            else:
+                login_button.click()
+                self.logger.info("登录按钮已点击")
             
-            # 添加更长的等待时间，防止会话被意外关闭
-            self.logger.info("等待页面跳转...")
-            time.sleep(3)
+            # 根据配置决定等待时间
+            if anti_detection.get('random_delays', True):
+                wait_time = random.uniform(2, 5)
+                self.logger.info(f"等待页面跳转... ({wait_time:.1f}秒)")
+                time.sleep(wait_time)
+            else:
+                self.logger.info("等待页面跳转...")
+                time.sleep(3)
             
             current_url = self.driver.current_url
             page_title = self.driver.title
@@ -423,6 +474,20 @@ class MTeamLogin:
             error_messages = self._check_page_errors()
             if error_messages:
                 self.logger.error(f"页面显示错误信息: {error_messages}")
+                
+                # 检查是否是频率限制错误
+                if any('頻繁' in msg or '频繁' in msg or 'frequent' in msg.lower() for msg in error_messages):
+                    self.logger.warning("⚠️ 检测到频率限制错误，这通常是因为短时间内多次登录")
+                    self.logger.info("💡 建议解决方案:")
+                    self.logger.info("   1. 等待 10-30 分钟后再次尝试")
+                    self.logger.info("   2. 使用不同的IP地址（如切换网络）")
+                    self.logger.info("   3. 减少登录频率")
+                    
+                    # 添加更长的等待时间
+                    wait_time = random.uniform(60, 120)  # 1-2分钟随机等待
+                    self.logger.info(f"🕐 程序将等待 {wait_time:.0f} 秒后自动退出，建议稍后重试")
+                    time.sleep(wait_time)
+                
                 return False
             
             # M-Team登录后通过div切换，优先检查邮箱验证
@@ -691,19 +756,10 @@ class MTeamLogin:
             return False
             
     def close(self):
-        """关闭浏览器并清理临时数据"""
+        """关闭浏览器"""
         if self.driver:
             self.driver.quit()
             self.logger.info("浏览器已关闭")
-        
-        # 清理临时用户数据目录
-        if self.temp_user_data and os.path.exists(self.temp_user_data):
-            try:
-                import shutil
-                shutil.rmtree(self.temp_user_data)
-                self.logger.info(f"已清理临时用户数据目录: {self.temp_user_data}")
-            except Exception as e:
-                self.logger.warning(f"清理临时用户数据目录失败: {e}")
             
     def run(self) -> bool:
         """运行完整的登录流程"""
