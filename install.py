@@ -606,7 +606,7 @@ def create_sample_config(chrome_path=None, chromedriver_path=None, venv_python=N
             "password": "your_gmail_app_password",
             "method": "imap"
         },
-        "headless": true,
+        "headless": True,
         "user_agent": f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{CHROME_VERSION} Safari/537.36",
     }
     
