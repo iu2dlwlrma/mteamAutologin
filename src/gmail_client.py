@@ -95,8 +95,8 @@ class GmailClient:
                             self.logger.debug(f"搜索条件 {criteria} 失败: {e}")
                             continue
                     
-                    # 等待10秒后重试
-                    time.sleep(10)
+                    # 等待5秒后重试
+                    time.sleep(5)
                     
                 except Exception as e:
                     self.logger.error(f"IMAP搜索过程中发生错误: {e}")

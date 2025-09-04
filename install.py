@@ -104,28 +104,89 @@ def check_python_version():
         print(f"✅ Python版本检查通过: {version.major}.{version.minor}.{version.micro}")
         return True
 
-def check_package_installed(package_name):
-    """检查包是否已安装"""
+def create_virtual_environment():
+    """创建虚拟环境"""
+    print("\n🐍 创建Python虚拟环境...")
+    
+    venv_path = Path("venv")
+    
+    # 检查虚拟环境是否已存在
+    if venv_path.exists() and (venv_path / "pyvenv.cfg").exists():
+        print("✅ 虚拟环境已存在，跳过创建")
+        return True, get_venv_python()
+    
+    try:
+        # 创建虚拟环境
+        subprocess.check_call([sys.executable, "-m", "venv", "venv"])
+        print("✅ 虚拟环境创建成功")
+        
+        venv_python = get_venv_python()
+        if not venv_python or not os.path.exists(venv_python):
+            print("❌ 无法找到虚拟环境中的Python可执行文件")
+            return False, None
+            
+        print(f"   虚拟环境Python路径: {venv_python}")
+        return True, venv_python
+        
+    except subprocess.CalledProcessError as e:
+        print(f"❌ 虚拟环境创建失败: {e}")
+        return False, None
+    except Exception as e:
+        print(f"❌ 虚拟环境创建失败: {e}")
+        return False, None
+
+def get_venv_python():
+    """获取虚拟环境中的Python可执行文件路径"""
+    venv_path = Path("venv")
+    
+    if platform.system().lower() == "windows":
+        python_exe = venv_path / "Scripts" / "python.exe"
+    else:
+        python_exe = venv_path / "bin" / "python"
+    
+    return str(python_exe) if python_exe.exists() else None
+
+def get_venv_pip():
+    """获取虚拟环境中的pip可执行文件路径"""
+    venv_path = Path("venv")
+    
+    if platform.system().lower() == "windows":
+        pip_exe = venv_path / "Scripts" / "pip.exe"
+    else:
+        pip_exe = venv_path / "bin" / "pip"
+    
+    return str(pip_exe) if pip_exe.exists() else None
+
+def check_package_installed(package_name, venv_python=None):
+    """检查包是否已安装（在虚拟环境中检查）"""
     try:
         # 从包名中提取实际的模块名（去掉版本号）
         module_name = package_name.split('==')[0].split('>=')[0].split('<=')[0].strip()
         
-        # 特殊处理一些包名映射
-        name_mapping = {
-            'beautifulsoup4': 'bs4',
-            'python-dotenv': 'dotenv',
-            'webdriver-manager': 'webdriver_manager'
-        }
-        
-        import_name = name_mapping.get(module_name, module_name)
-        
-        # 尝试导入包
-        __import__(import_name)
-        return True
-    except ImportError:
+        if venv_python:
+            # 在虚拟环境中检查
+            result = subprocess.run([
+                venv_python, "-c", f"import {module_name}"
+            ], capture_output=True, text=True)
+            return result.returncode == 0
+        else:
+            # 在当前环境中检查
+            # 特殊处理一些包名映射
+            name_mapping = {
+                'beautifulsoup4': 'bs4',
+                'python-dotenv': 'dotenv',
+                'webdriver-manager': 'webdriver_manager'
+            }
+            
+            import_name = name_mapping.get(module_name, module_name)
+            
+            # 尝试导入包
+            __import__(import_name)
+            return True
+    except (ImportError, subprocess.SubprocessError):
         return False
 
-def get_missing_packages():
+def get_missing_packages(venv_python=None):
     """获取缺失的依赖包列表"""
     requirements_file = "requirements.txt"
     if not os.path.exists(requirements_file):
@@ -137,7 +198,7 @@ def get_missing_packages():
         
         missing_packages = []
         for package in all_packages:
-            if not check_package_installed(package):
+            if not check_package_installed(package, venv_python):
                 missing_packages.append(package)
         
         return missing_packages
@@ -145,8 +206,8 @@ def get_missing_packages():
         print(f"⚠️ 读取requirements.txt失败: {e}")
         return []
 
-def install_dependencies():
-    """安装Python依赖"""
+def install_dependencies(venv_python=None):
+    """在虚拟环境中安装Python依赖"""
     print("\n📦 检查Python依赖包...")
     
     requirements_file = "requirements.txt"
@@ -154,8 +215,11 @@ def install_dependencies():
         print("❌ requirements.txt 文件不存在！")
         return False
     
-    # 检查缺失的包
-    missing_packages = get_missing_packages()
+    # 使用虚拟环境的Python或系统Python
+    python_exe = venv_python if venv_python else sys.executable
+    
+    # 检查缺失的包（在虚拟环境中检查）
+    missing_packages = get_missing_packages(venv_python)
     
     if not missing_packages:
         print("✅ 所有依赖包已安装，跳过安装步骤")
@@ -165,8 +229,19 @@ def install_dependencies():
     for pkg in missing_packages:
         print(f"   - {pkg}")
     
-    # 只安装缺失的包
-    print(f"\n🔄 开始安装缺失的依赖包...")
+    # 在虚拟环境中安装缺失的包
+    print(f"\n🔄 开始在虚拟环境中安装依赖包...")
+    if venv_python:
+        print(f"   使用虚拟环境: {venv_python}")
+    
+    # 首先升级pip
+    try:
+        subprocess.check_call([
+            python_exe, "-m", "pip", "install", "--upgrade", "pip"
+        ], stdout=subprocess.DEVNULL)
+        print("✅ pip已升级到最新版本")
+    except:
+        print("⚠️ pip升级失败，继续使用当前版本")
     
     # 首先尝试批量安装缺失的包
     try:
@@ -177,7 +252,7 @@ def install_dependencies():
                 f.write(f"{pkg}\n")
         
         subprocess.check_call([
-            sys.executable, "-m", "pip", "install", "-r", temp_requirements
+            python_exe, "-m", "pip", "install", "-r", temp_requirements
         ])
         
         # 清理临时文件
@@ -197,7 +272,7 @@ def install_dependencies():
         try:
             failed_packages = []
             for package in missing_packages:
-                if not install_single_package(package):
+                if not install_single_package(package, python_exe):
                     failed_packages.append(package)
             
             if failed_packages:
@@ -207,7 +282,10 @@ def install_dependencies():
                 
                 print("请手动运行以下命令尝试安装:")
                 for pkg in failed_packages:
-                    print(f"  pip install {pkg}")
+                    if venv_python:
+                        print(f"  {python_exe} -m pip install {pkg}")
+                    else:
+                        print(f"  pip install {pkg}")
                 return False
             else:
                 print("✅ 所有依赖包安装完成")
@@ -215,17 +293,23 @@ def install_dependencies():
                 
         except Exception as e:
             print(f"❌ 依赖包安装失败: {e}")
-            print("请手动运行: pip install -r requirements.txt")
+            if venv_python:
+                print(f"请手动运行: {python_exe} -m pip install -r requirements.txt")
+            else:
+                print("请手动运行: pip install -r requirements.txt")
             return False
 
-def install_single_package(package):
+def install_single_package(package, python_exe=None):
     """安装单个依赖包"""
     print(f"📦 正在安装: {package}")
+    
+    if not python_exe:
+        python_exe = sys.executable
     
     # 普通包的安装
     try:
         subprocess.check_call([
-            sys.executable, "-m", "pip", "install", package
+            python_exe, "-m", "pip", "install", package
         ], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
         print(f"✅ {package} 安装成功")
         return True
@@ -475,7 +559,7 @@ def check_system_chrome():
     print("ℹ️  未检测到系统Chrome（使用本地下载版本）")
     return False
 
-def create_sample_config(chrome_path=None, chromedriver_path=None):
+def create_sample_config(chrome_path=None, chromedriver_path=None, venv_python=None):
     """创建示例配置文件"""
     print("\n⚙️  创建配置文件...")
     
@@ -496,6 +580,8 @@ def create_sample_config(chrome_path=None, chromedriver_path=None):
                 existing_config["chrome_binary_path"] = os.path.abspath(chrome_path)
             if chromedriver_path:
                 existing_config["chromedriver_path"] = os.path.abspath(chromedriver_path)
+            if venv_python:
+                existing_config["venv_python"] = os.path.abspath(venv_python)
             
             # 更新User-Agent到正确的Chrome版本
             existing_config["user_agent"] = f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{CHROME_VERSION} Safari/537.36"
@@ -529,6 +615,8 @@ def create_sample_config(chrome_path=None, chromedriver_path=None):
         sample_config["chrome_binary_path"] = os.path.abspath(chrome_path)
     if chromedriver_path:
         sample_config["chromedriver_path"] = os.path.abspath(chromedriver_path)
+    if venv_python:
+        sample_config["venv_python"] = os.path.abspath(venv_python)
     
     try:
         with open(config_path, 'w', encoding='utf-8') as f:
@@ -612,7 +700,7 @@ def interactive_config():
         print(f"❌ 保存配置失败: {e}")
         return False
 
-def show_next_steps():
+def show_next_steps(venv_python=None):
     """显示下一步操作"""
     print("\n" + "="*60)
     print("🎉 自动安装完成！")
@@ -630,7 +718,15 @@ def show_next_steps():
     print("   - 将 'your_gmail_app_password' 替换为Gmail应用专用密码")
     
     print("\n3. 运行程序:")
-    print("   python run.py")
+    if venv_python:
+        print(f"   {venv_python} run.py")
+        print("   或者:")
+        if platform.system().lower() == "windows":
+            print("   venv\\Scripts\\activate && python run.py")
+        else:
+            print("   source venv/bin/activate && python run.py")
+    else:
+        print("   python run.py")
     
     print("\n📁 项目结构:")
     print("   ├── bin/               # 二进制文件目录")
@@ -639,13 +735,17 @@ def show_next_steps():
     print("   ├── config/            # 配置文件目录")
     print("   │   └── config.json    # 配置文件（需要编辑）")
     print("   ├── logs/              # 日志文件目录")
+    if venv_python:
+        print("   ├── venv/              # Python虚拟环境")
     print("   └── run.py             # 主程序")
     
     print("\n💡 提示:")
     print(f"   - Chrome和ChromeDriver版本: {CHROME_VERSION}")
     print("   - 使用二进制版本，无需系统安装Chrome")
+    if venv_python:
+        print("   - 使用虚拟环境，依赖包隔离管理")
     print("   - 版本固定，确保稳定性和兼容性")
-    print("   - 如需重新安装，删除 bin/ 目录后重新运行此脚本")
+    print("   - 如需重新安装，删除 bin/ 和 venv/ 目录后重新运行此脚本")
     
     print("\n📚 查看详细文档: README.md")
 
@@ -660,8 +760,11 @@ def main():
     # 获取系统信息
     system, arch = get_system_info()
     
-    # 安装Python依赖
-    deps_ok = install_dependencies()
+    # 创建虚拟环境
+    venv_ok, venv_python = create_virtual_environment()
+    
+    # 在虚拟环境中安装Python依赖
+    deps_ok = install_dependencies(venv_python if venv_ok else None)
     
     # 自动下载Chrome浏览器
     chrome_ok, chrome_path = download_chrome(system, arch)
@@ -670,7 +773,7 @@ def main():
     driver_ok, chromedriver_path = download_chromedriver_for_chrome(system, arch, chrome_path)
     
     # 创建配置文件
-    config_ok = create_sample_config(chrome_path, chromedriver_path)
+    config_ok = create_sample_config(chrome_path, chromedriver_path, venv_python if venv_ok else None)
     
     # 交互式配置（可选）
     if config_ok:
@@ -680,11 +783,14 @@ def main():
     print("\n" + "="*60)
     print("📊 安装完成结果:")
     print(f"   Python版本: ✅")
+    print(f"   虚拟环境: {'✅' if venv_ok else '❌'}")
     print(f"   依赖包: {'✅' if deps_ok else '❌'}")
     print(f"   Chrome浏览器: {'✅' if chrome_ok else '❌'}")
     print(f"   ChromeDriver: {'✅' if driver_ok else '❌'}")
     print(f"   配置文件: {'✅' if config_ok else '❌'}")
     
+    if venv_python:
+        print(f"   虚拟环境Python: {venv_python}")
     if chrome_path:
         print(f"   Chrome路径: {chrome_path}")
     if chromedriver_path:
@@ -692,12 +798,12 @@ def main():
     
     print(f"   Chrome版本: {CHROME_VERSION} (二进制版本)")
     
-    if deps_ok and chrome_ok and driver_ok and config_ok:
+    if venv_ok and deps_ok and chrome_ok and driver_ok and config_ok:
         print("\n🎉 所有组件安装成功！")
-        show_next_steps()
+        show_next_steps(venv_python if venv_ok else None)
     else:
         print("\n⚠️ 部分组件安装失败，但基本功能可能仍可使用")
-        show_next_steps()
+        show_next_steps(venv_python if venv_ok else None)
 
 if __name__ == "__main__":
     main() 

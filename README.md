@@ -34,6 +34,7 @@ mteam/
 ├── start.sh               # Linux/macOS启动脚本
 ├── start_hidden.vbs       # Windows静默运行脚本（极简版）
 ├── start_silent.vbs       # Windows静默运行脚本（带通知）
+├── venv/                  # Python虚拟环境（自动创建）
 └── README.md              # 项目说明
 ```
 
@@ -135,6 +136,58 @@ start_silent.vbs    # 带现代Toast通知
 - ✅ Windows 10/11 原生Toast通知支持
 - ✅ 自动错误处理和通知
 - ✅ 适合定时任务和开机启动
+
+## 🐍 虚拟环境管理
+
+### 自动创建虚拟环境
+
+安装脚本会自动创建并使用Python虚拟环境，确保依赖包的隔离：
+
+- ✅ **自动创建**: `install.py` 自动创建 `venv` 虚拟环境
+- ✅ **依赖隔离**: 所有依赖包安装在虚拟环境中，不影响系统Python
+- ✅ **版本固定**: 使用 `requirements.txt` 固定依赖版本
+- ✅ **自动激活**: 启动脚本自动使用虚拟环境Python
+
+### 手动管理虚拟环境
+
+#### Windows
+
+```batch
+# 激活虚拟环境
+venv\Scripts\activate
+
+# 安装依赖
+pip install -r requirements.txt
+
+# 运行程序
+python run.py
+
+# 退出虚拟环境
+deactivate
+```
+
+#### Linux/macOS
+
+```bash
+# 激活虚拟环境
+source venv/bin/activate
+
+# 安装依赖
+pip install -r requirements.txt
+
+# 运行程序
+python run.py
+
+# 退出虚拟环境
+deactivate
+```
+
+### 虚拟环境优势
+
+- 🔒 **依赖隔离**: 不同项目的依赖包互不干扰
+- 🛡️ **系统保护**: 避免污染系统Python环境
+- 📦 **版本管理**: 精确控制每个包的版本
+- 🚀 **快速部署**: 可轻松复制到其他机器
 
 ## 功能特性
 

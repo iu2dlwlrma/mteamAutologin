@@ -599,9 +599,9 @@ class MTeamLogin:
                     
                     self.logger.info("成功点击发送验证码按钮！")
                     
-                    # 等待验证码发送到邮箱（增加等待时间确保邮件到达）
+                    # 等待验证码发送到邮箱（减少等待时间提高效率）
                     self.logger.info("等待验证码邮件发送...")
-                    time.sleep(10)  # 等待10秒确保邮件发送完成
+                    time.sleep(5)  # 等待5秒确保邮件发送完成
                     
                 except Exception as click_error:
                     self.logger.error(f"点击发送验证码按钮失败: {click_error}")
@@ -639,7 +639,7 @@ class MTeamLogin:
                             self.driver.execute_script("arguments[0].click();", send_code_button)
                         
                         self.logger.info("成功点击发送验证码按钮！")
-                        time.sleep(10)  # 等待验证码发送到邮箱
+                        time.sleep(5)  # 等待验证码发送到邮箱
                         
                     except Exception as e:
                         self.logger.error(f"点击发送验证码按钮失败: {e}")
@@ -681,9 +681,9 @@ class MTeamLogin:
             self.logger.info("正在从Gmail获取最新验证码...")
             self.gmail_client = GmailClient(self.config["gmail"])
             
-            # 尝试获取验证码，最多重试2次
+            # 尝试获取验证码，最多重试5次
             verification_code = None
-            for attempt in range(2):
+            for attempt in range(5):
                 self.logger.info(f"第{attempt+1}次尝试获取验证码...")
                 verification_code = self.gmail_client.get_verification_code(timeout=60)
                 if verification_code:
