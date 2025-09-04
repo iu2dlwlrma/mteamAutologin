@@ -396,16 +396,23 @@ class MTeamLogin:
             self.logger.info(f"登录后URL: {current_url}")
             self.logger.info(f"登录后页面标题: {page_title}")
             
-            # 检查是否有错误信息
+            # 检查是否有错误信息（增强版，更多错误检测）
             error_messages = []
             error_selectors = [
                 "//div[contains(@class, 'error')]",
                 "//div[contains(@class, 'alert')]", 
+                "//div[contains(@class, 'danger')]",
                 "//span[contains(@class, 'error')]",
                 "//div[contains(text(), '错误')]",
                 "//div[contains(text(), '失败')]",
                 "//div[contains(text(), 'error')]",
-                "//div[contains(text(), 'failed')]"
+                "//div[contains(text(), 'failed')]",
+                "//div[contains(text(), '用户名')]",
+                "//div[contains(text(), '密码')]",
+                "//div[contains(text(), 'username')]",
+                "//div[contains(text(), 'password')]",
+                "//div[contains(text(), 'invalid')]",
+                "//div[contains(text(), 'incorrect')]"
             ]
             
             for selector in error_selectors:
@@ -416,24 +423,50 @@ class MTeamLogin:
                             error_messages.append(element.text.strip())
                 except:
                     continue
-                    
+            
+            # 检查登录表单是否还存在（表明登录失败）
+            login_form_exists = False
+            try:
+                self.driver.find_element(By.ID, "username")
+                self.driver.find_element(By.ID, "password")
+                login_form_exists = True
+                self.logger.warning("🔍 检测到登录表单仍然存在，可能登录失败")
+            except:
+                pass
+            
             if error_messages:
-                self.logger.error(f"页面显示错误信息: {error_messages}")
+                self.logger.error(f"🚨 页面显示错误信息: {error_messages}")
                 return False
             
-            # 检查是否跳转到邮箱验证页面 (M-Team的两步验证流程)
+            if login_form_exists and "login" in current_url.lower():
+                self.logger.warning("🔍 仍在登录页面且登录表单存在，检查用户名密码是否正确")
+                # 这里不直接返回False，而是继续检查是否需要邮箱验证
+            
+            # 🔑 关键修复：M-Team登录后不跳转页面，而是通过JavaScript切换div
+            # 因此需要先检查是否进入邮箱验证流程，而不是先判断URL跳转
+            
+            # 1. 优先检查是否跳转到邮箱验证页面 (M-Team的两步验证流程)
             if self._is_email_verification_page():
-                self.logger.info("检测到邮箱验证页面，开始处理邮箱验证...")
+                self.logger.info("✅ 登录成功！检测到邮箱验证页面，开始处理邮箱验证...")
                 return self.handle_email_verification()
             
-            # 检查是否直接登录成功
+            # 2. 如果没有邮箱验证，检查是否直接登录成功（URL跳转）
             if self.is_login_successful():
-                self.logger.info("M-Team 登录成功！")
+                self.logger.info("✅ M-Team 登录成功！")
                 return True
-            else:
-                self.logger.error("M-Team 登录失败")
+            
+            # 3. 最后才判断登录失败
+            # 注意：即使仍在login页面，也可能是因为需要邮箱验证但检测失败
+            if login_form_exists and "login" in current_url.lower():
+                self.logger.error("❌ M-Team 登录失败 - 仍在登录页面且存在登录表单")
                 if error_messages:
-                    self.logger.error(f"可能的错误原因: {', '.join(error_messages)}")
+                    self.logger.error(f"🚨 错误信息: {', '.join(error_messages)}")
+                else:
+                    self.logger.error("💡 可能原因：用户名或密码错误")
+                return False
+            else:
+                # 特殊情况：在login页面但没有表单，可能是页面加载问题
+                self.logger.warning("⚠️ 页面状态异常，无法确定登录结果")
                 return False
                 
         except Exception as e:
@@ -462,21 +495,31 @@ class MTeamLogin:
                 self.logger.info(f"✅ 标题中检测到邮箱验证关键词: {page_title}")
                 return True
             
-            # 使用显式等待快速检查关键元素存在
-            wait = WebDriverWait(self.driver, 1)  # 只等待1秒
+            # 使用显式等待快速检查关键元素存在（专门针对M-Team的div切换）
+            wait = WebDriverWait(self.driver, 2)  # 稍微增加到2秒，给div切换时间
+            
+            # M-Team特有的邮箱验证元素
             verification_elements = [
-                "//input[@placeholder*='验证码']",
-                "//input[@placeholder*='verification']",
-                "//input[@placeholder*='code']",
+                "//input[contains(@placeholder, '验证码')]",
+                "//input[contains(@placeholder, 'verification')]", 
+                "//input[contains(@placeholder, 'code')]",
+                "//input[contains(@placeholder, '輸入')]",  # 繁体中文
+                "//button[contains(text(), '获取验证码')]",
+                "//button[contains(text(), '獲取驗證碼')]",  # 繁体中文
                 "//button[contains(text(), '验证')]",
-                "//button[contains(text(), '获取验证码')]"
+                "//button[contains(text(), '驗證')]",  # 繁体中文
+                "//div[contains(@class, 'verification')]",
+                "//div[contains(@class, 'email-verify')]"
             ]
             
             for xpath in verification_elements:
                 try:
-                    wait.until(EC.presence_of_element_located((By.XPATH, xpath)))
+                    element = wait.until(EC.presence_of_element_located((By.XPATH, xpath)))
                     self.logger.info(f"✅ 找到邮箱验证元素: {xpath}")
-                    return True
+                    # 检查元素是否可见（因为可能有隐藏的元素）
+                    if element.is_displayed():
+                        self.logger.info("✅ 邮箱验证元素可见，确认进入验证流程")
+                        return True
                 except TimeoutException:
                     continue
             
@@ -769,10 +812,11 @@ class MTeamLogin:
             self.logger.info(f"检查登录状态 - URL: {current_url}")
             self.logger.info(f"检查登录状态 - 标题: {page_title}")
             
-            # 1. 快速检查：如果还在登录页面，直接返回失败
+            # 1. 检查URL：注意M-Team登录后可能仍在login页面（div切换）
+            # 所以不能简单地因为包含"login"就判断失败
             if "login" in current_url.lower():
-                self.logger.info("仍在登录页面，登录失败")
-                return False
+                # 需要进一步检查页面内容来确定是否真的失败
+                self.logger.info("📍 仍在login页面，需要进一步检查页面内容...")
             
             # 2. 快速检查：URL跳转成功是最可靠的标志
             success_urls = ['index', 'home', 'main', 'dashboard', 'user', 'member', 'browse', 'torrents']
