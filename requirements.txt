@@ -1,0 +1,4 @@
+selenium==4.11.2
+webdriver-manager==3.9.1
+requests==2.31.0
+imaplib2==3.6
