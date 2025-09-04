@@ -62,6 +62,7 @@ class MTeamLogin:
         self.config = self.load_config(config_file)
         self.driver = None
         self.gmail_client = None
+        self.temp_user_data = None  # 临时用户数据目录路径
         
         # 网站URLs
         self.login_url = "https://kp.m-team.cc/login"
@@ -159,20 +160,29 @@ class MTeamLogin:
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
         chrome_options.add_experimental_option('useAutomationExtension', False)
         
-        # 减少日志输出
+        # 禁用所有缓存和用户数据持久化，确保每次都是全新会话
+        chrome_options.add_argument('--incognito')  # 隐身模式
+        chrome_options.add_argument('--disable-plugins')
+        chrome_options.add_argument('--disable-extensions')
+        chrome_options.add_argument('--disable-web-security')
+        chrome_options.add_argument('--disable-features=VizDisplayCompositor')
         chrome_options.add_argument('--disable-logging')
         chrome_options.add_argument('--log-level=3')
         chrome_options.add_argument('--disable-dev-tools')
         chrome_options.add_argument('--no-first-run')
-        chrome_options.add_argument('--disable-extensions')
         
+        # 禁用各种缓存
+        chrome_options.add_argument('--disable-application-cache')
+        chrome_options.add_argument('--disable-background-timer-throttling')
+        chrome_options.add_argument('--disable-backgrounding-occluded-windows')
+        chrome_options.add_argument('--disable-renderer-backgrounding')
+        chrome_options.add_argument('--disable-background-networking')
+        
+        # 使用临时目录作为用户数据目录（会话结束后自动清理）
         import tempfile
-        import os
-        # 使用项目内固定的Chrome用户数据目录，便于缓存清理
-        project_root = Path(__file__).parent.parent
-        chrome_user_data_dir = project_root / "chrome_user_data"
-        chrome_user_data_dir.mkdir(exist_ok=True)
-        chrome_options.add_argument(f'--user-data-dir={chrome_user_data_dir}')
+        self.temp_user_data = tempfile.mkdtemp(prefix='mteam_temp_')
+        chrome_options.add_argument(f'--user-data-dir={self.temp_user_data}')
+        self.logger.info(f"使用临时用户数据目录: {self.temp_user_data}")
         
         if self.config.get('headless', False):
             chrome_options.add_argument('--headless')
@@ -302,6 +312,27 @@ class MTeamLogin:
             # 检查页面标题和URL
             self.logger.info(f"页面标题: {self.driver.title}")
             self.logger.info(f"当前URL: {self.driver.current_url}")
+            
+            # 检查是否已经跳转到首页（说明已经登录）
+            current_url = self.driver.current_url.lower()
+            homepage_keywords = ['index', 'home', 'main', 'dashboard']
+            found_keyword = next((kw for kw in homepage_keywords if kw in current_url), None)
+            
+            if found_keyword:
+                self.logger.info(f"🔍 检测到页面包含首页关键词 '{found_keyword}': {self.driver.current_url}")
+                self.logger.info("正在验证登录状态...")
+                
+                # 进一步确认是否真的已经登录
+                if self.is_login_successful():
+                    self.logger.info("✅ 验证通过：已检测到登录状态！")
+                    self.logger.info("✅ 用户已登录，直接跳转到首页，跳过登录流程！")
+                    self.logger.info("🎉 M-Team 登录成功（通过Cookie自动登录）！")
+                    return True
+                else:
+                    self.logger.warning("⚠️ 页面跳转到首页但登录状态验证失败")
+                    self.logger.info("继续尝试正常登录流程...")
+            else:
+                self.logger.info("页面未跳转到首页，继续正常登录流程")
             
             # 尝试多种方式查找用户名输入框
             username_input = None
@@ -606,33 +637,52 @@ class MTeamLogin:
             current_url = self.driver.current_url.lower()
             page_title = self.driver.title
             
-            # 检查URL跳转
+            # 检查URL跳转（M-Team首页特征）
             success_urls = ['index', 'home', 'main', 'dashboard', 'user', 'member', 'browse', 'torrents']
             if any(keyword in current_url for keyword in success_urls):
                 self.logger.info(f"URL跳转成功: {current_url}")
-                return True
+                
+                # 进一步验证：检查M-Team首页特有的标题特征
+                if "m-team" in page_title.lower() and ("首頁" in page_title or "首页" in page_title or "home" in page_title.lower()):
+                    self.logger.info(f"检测到M-Team首页标题: {page_title}")
+                    return True
+                
+                # 如果不在登录页面且页面有足够内容，也认为登录成功
+                if "login" not in current_url and len(self.driver.page_source) > 10000:
+                    return True
             
             # 检查页面标题变化
             if "登录" not in page_title and "login" not in page_title.lower() and page_title.strip():
-                return True
-                
-            # 检查登录成功元素
-            wait = WebDriverWait(self.driver, 1)
-            success_elements = [
-                "//a[contains(@href, 'logout') or contains(text(), '退出')]",
-                "//div[contains(@class, 'user')]"
-            ]
-            
-            for selector in success_elements:
-                try:
-                    wait.until(EC.presence_of_element_located((By.XPATH, selector)))
+                # 进一步检查是否是M-Team的页面
+                if "m-team" in page_title.lower() or "mteam" in page_title.lower():
                     return True
-                except TimeoutException:
-                    continue
+                
+            # 检查登录成功元素（快速检查）
+            try:
+                wait = WebDriverWait(self.driver, 2)
+                success_elements = [
+                    "//a[contains(@href, 'logout') or contains(text(), '退出') or contains(text(), '登出')]",
+                    "//div[contains(@class, 'user') and not(contains(@class, 'login'))]",
+                    "//a[contains(@href, 'user') or contains(@href, 'profile')]"
+                ]
+                
+                for selector in success_elements:
+                    try:
+                        element = wait.until(EC.presence_of_element_located((By.XPATH, selector)))
+                        if element.is_displayed():
+                            self.logger.info(f"检测到登录成功元素: {selector}")
+                            return True
+                    except TimeoutException:
+                        continue
+            except:
+                pass
             
-            # 页面内容判断
+            # 最后的页面内容判断
             if "login" not in current_url and len(self.driver.page_source) > 5000:
-                return True
+                # 检查页面是否包含M-Team特有内容
+                page_source = self.driver.page_source.lower()
+                if any(keyword in page_source for keyword in ['torrent', 'download', 'upload', 'ratio', 'm-team']):
+                    return True
                 
             return False
             
@@ -641,10 +691,19 @@ class MTeamLogin:
             return False
             
     def close(self):
-        """关闭浏览器"""
+        """关闭浏览器并清理临时数据"""
         if self.driver:
             self.driver.quit()
             self.logger.info("浏览器已关闭")
+        
+        # 清理临时用户数据目录
+        if self.temp_user_data and os.path.exists(self.temp_user_data):
+            try:
+                import shutil
+                shutil.rmtree(self.temp_user_data)
+                self.logger.info(f"已清理临时用户数据目录: {self.temp_user_data}")
+            except Exception as e:
+                self.logger.warning(f"清理临时用户数据目录失败: {e}")
             
     def run(self) -> bool:
         """运行完整的登录流程"""

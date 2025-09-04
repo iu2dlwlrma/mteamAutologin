@@ -647,15 +647,7 @@ def create_sample_config(chrome_path=None, chromedriver_path=None, venv_python=N
                     "method": "imap"
                 },
                 "headless": True,
-                "user_agent": f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{CHROME_VERSION} Safari/537.36",
-                "cache_cleanup": {
-                    "enabled": True,
-                    "interval_days": 7,
-                    "cleanup_browser_cache": True,
-                    "cleanup_logs": True,
-                    "keep_recent_logs_days": 3,
-                    "last_cleanup": None
-                }
+                "user_agent": f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{CHROME_VERSION} Safari/537.36"
             }
             
             # 智能合并配置：添加缺失的配置项，保留现有的用户设置
