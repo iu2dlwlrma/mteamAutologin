@@ -600,6 +600,25 @@ def check_system_chrome():
     print("ℹ️  未检测到系统Chrome（使用本地下载版本）")
     return False
 
+def merge_config_intelligently(existing_config, default_config):
+    """智能合并配置：添加缺失项，保留现有用户设置"""
+    merged = existing_config.copy()
+    
+    def merge_dict(target, source):
+        """递归合并字典"""
+        for key, value in source.items():
+            if key not in target:
+                # 缺失的配置项，直接添加
+                target[key] = value
+                print(f"   + 添加新配置项: {key}")
+            elif isinstance(value, dict) and isinstance(target[key], dict):
+                # 都是字典，递归合并
+                merge_dict(target[key], value)
+            # 如果已存在且不是默认值，保留用户设置
+    
+    merge_dict(merged, default_config)
+    return merged
+
 def create_sample_config(chrome_path=None, chromedriver_path=None, venv_python=None):
     """创建示例配置文件"""
     print("\n⚙️  创建配置文件...")
@@ -610,27 +629,53 @@ def create_sample_config(chrome_path=None, chromedriver_path=None, venv_python=N
     
     config_path = config_dir / "config.json"
     
-    # 如果配置文件已存在，更新浏览器路径
+    # 如果配置文件已存在，智能更新并添加缺失配置项
     if config_path.exists():
         try:
             with open(config_path, 'r', encoding='utf-8') as f:
                 existing_config = json.load(f)
             
-            # 更新浏览器路径（转换为绝对路径）
+            # 创建完整的默认配置模板
+            default_config = {
+                "mteam": {
+                    "username": "your_mteam_username",
+                    "password": "your_mteam_password"
+                },
+                "gmail": {
+                    "email": "your_gmail@gmail.com",
+                    "password": "your_gmail_app_password",
+                    "method": "imap"
+                },
+                "headless": True,
+                "user_agent": f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{CHROME_VERSION} Safari/537.36",
+                "cache_cleanup": {
+                    "enabled": True,
+                    "interval_days": 7,
+                    "cleanup_browser_cache": True,
+                    "cleanup_logs": True,
+                    "keep_recent_logs_days": 3,
+                    "last_cleanup": None
+                }
+            }
+            
+            # 智能合并配置：添加缺失的配置项，保留现有的用户设置
+            merged_config = merge_config_intelligently(existing_config, default_config)
+            
+            # 更新系统相关路径（总是使用最新的）
             if chrome_path:
-                existing_config["chrome_binary_path"] = os.path.abspath(chrome_path)
+                merged_config["chrome_binary_path"] = os.path.abspath(chrome_path)
             if chromedriver_path:
-                existing_config["chromedriver_path"] = os.path.abspath(chromedriver_path)
+                merged_config["chromedriver_path"] = os.path.abspath(chromedriver_path)
             if venv_python:
-                existing_config["venv_python"] = os.path.abspath(venv_python)
+                merged_config["venv_python"] = os.path.abspath(venv_python)
             
             # 更新User-Agent到正确的Chrome版本
-            existing_config["user_agent"] = f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{CHROME_VERSION} Safari/537.36"
+            merged_config["user_agent"] = f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{CHROME_VERSION} Safari/537.36"
             
             with open(config_path, 'w', encoding='utf-8') as f:
-                json.dump(existing_config, f, indent=4, ensure_ascii=False)
+                json.dump(merged_config, f, indent=4, ensure_ascii=False)
             
-            print("✅ 配置文件已更新")
+            print("✅ 配置文件已智能更新，新增功能配置已添加")
             return True
             
         except Exception as e:
