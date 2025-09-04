@@ -13,6 +13,7 @@
 - 📧 **智能验证码**：自动获取Gmail邮箱验证码
 - 🛡️ **反检测模式**：使用Chrome二进制版本，内置反爬虫检测机制
 - 💻 **跨平台支持**：支持Windows、Linux、macOS
+- 🧹 **自动缓存清理**：每7天自动清理浏览器缓存和日志文件
 
 ## 项目结构
 
@@ -20,7 +21,8 @@
 mteam/
 ├── src/                    # 源代码目录
 │   ├── mteam_login.py     # 主登录脚本
-│   └── gmail_client.py    # Gmail验证码获取客户端
+│   ├── gmail_client.py    # Gmail验证码获取客户端
+│   └── cache_cleaner.py   # 缓存清理模块
 ├── bin/                    # 二进制文件目录（自动生成）
 │   ├── browsers/          # Chrome 140.0.7339.80 二进制版本
 │   └── drivers/           # ChromeDriver 140.0.7339.80
@@ -30,6 +32,7 @@ mteam/
 ├── requirements.txt       # Python依赖
 ├── run.py                 # 主启动脚本
 ├── install.py             # 自动安装脚本
+├── clean_cache.py         # 缓存清理工具
 ├── start.bat              # Windows启动脚本
 ├── start.sh               # Linux/macOS启动脚本
 ├── start_hidden.vbs       # Windows静默运行脚本（极简版）
@@ -219,6 +222,58 @@ deactivate
 - ✅ 自动登录M-Team网站
 - ✅ 自动处理邮箱验证码
 - ✅ 反自动化检测
+- ✅ 自动缓存清理
+
+## 🧹 缓存清理功能
+
+### 自动清理
+
+程序会每7天自动清理浏览器缓存和日志文件，无需手动操作：
+
+- 📱 **浏览器缓存**: 清理Chrome临时文件和用户数据
+- 📄 **日志文件**: 清理3天前的旧日志文件
+- ⚙️ **配置灵活**: 可自定义清理间隔和保留策略
+
+### 手动清理
+
+使用专用的缓存清理工具：
+
+```bash
+# 查看清理状态
+python clean_cache.py --status
+
+# 强制执行清理
+python clean_cache.py --force
+
+# 仅清理浏览器缓存
+python clean_cache.py --browser-only
+
+# 仅清理日志文件
+python clean_cache.py --logs-only
+```
+
+### 清理配置
+
+在 `config/config.json` 中配置清理选项：
+
+```json
+{
+    "cache_cleanup": {
+        "enabled": true,               // 是否启用自动清理
+        "interval_days": 7,            // 清理间隔（天）
+        "cleanup_browser_cache": true, // 是否清理浏览器缓存
+        "cleanup_logs": true,          // 是否清理日志文件
+        "keep_recent_logs_days": 3,    // 保留最近几天的日志
+        "last_cleanup": null           // 上次清理时间（自动维护）
+    }
+}
+```
+
+### 清理效果
+
+- 🚀 **性能提升**: 清理缓存文件，减少磁盘空间占用
+- 🔧 **问题修复**: 清理可能损坏的浏览器缓存文件
+- 📊 **日志管理**: 避免日志文件无限积累
 
 ## 依赖说明
 

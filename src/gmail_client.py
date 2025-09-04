@@ -116,55 +116,69 @@ class GmailClient:
                 search_time = (datetime.now() - timedelta(minutes=2)).strftime("%d-%b-%Y")
             
             start_time = time.time()
+            search_attempt = 0
+            
             while time.time() - start_time < timeout:
-                try:
-                    # 广泛搜索最新邮件（先找到M-Team真实的发送地址）
-                    search_criteria = [
-                        # 最新的未读邮件（包含验证码关键词）
-                        f'(SINCE "{search_time}") (SUBJECT "验证" OR SUBJECT "verification" OR SUBJECT "code" OR SUBJECT "驗證") UNSEEN',
-                        f'(SINCE "{search_time}") (BODY "验证码" OR BODY "verification code" OR BODY "驗證碼") UNSEEN',
-                        
-                        # 所有最新邮件（包含M-Team相关）
-                        f'(SINCE "{search_time}") (FROM "m-team" OR SUBJECT "m-team" OR BODY "m-team") UNSEEN',
-                        f'(SINCE "{search_time}") (FROM "mteam" OR SUBJECT "mteam" OR BODY "mteam") UNSEEN',
-                        
-                        # 常见的PT站发送地址
-                        f'(SINCE "{search_time}") (FROM "web@m-team.cc" OR FROM "noreply@m-team.cc" OR FROM "admin@m-team.cc" OR FROM "system@m-team.cc") UNSEEN',
-                        f'(SINCE "{search_time}") (FROM "no-reply@m-team.cc" OR FROM "service@m-team.cc") UNSEEN',
-                        
-                        # 放宽时间限制的搜索
-                        f'(SUBJECT "验证" OR SUBJECT "verification" OR SUBJECT "code" OR SUBJECT "驗證") UNSEEN',
-                        f'(BODY "验证码" OR BODY "verification code" OR BODY "驗證碼") UNSEEN',
-                        
-                        # 最后尝试：所有未读邮件
-                        'UNSEEN'
-                    ]
+                search_attempt += 1
+                self.logger.info(f"第{search_attempt}次搜索邮件...")
+                
+                # 进行快速的双重搜索（解决邮件到达时序问题）
+                for search_round in range(2):
+                    if search_round == 1:
+                        # 第二轮搜索前等待1秒，确保新邮件被服务器索引
+                        time.sleep(1)
+                        self.logger.debug("进行第二轮快速搜索...")
                     
-                    for criteria in search_criteria:
-                        try:
-                            status, messages = mail.search(None, criteria)
-                            if status == 'OK' and messages[0]:
-                                message_ids = messages[0].split()
-                                if message_ids:
-                                    # 获取最新的邮件（邮件ID通常是按时间排序的，最后一个是最新的）
-                                    latest_id = message_ids[-1]
-                                    self.logger.info(f"找到邮件ID: {latest_id}")
-                                    verification_code = self._extract_code_from_email(mail, latest_id, sent_after_time)
-                                    if verification_code:
-                                        self.logger.info(f"成功从最新邮件中提取验证码: {verification_code}")
-                                        mail.close()
-                                        mail.logout()
-                                        return verification_code
-                        except Exception as e:
-                            self.logger.debug(f"搜索条件 {criteria} 失败: {e}")
-                            continue
+                    try:
+                        # 广泛搜索最新邮件（先找到M-Team真实的发送地址）
+                        search_criteria = [
+                            # 最新的未读邮件（包含验证码关键词）
+                            f'(SINCE "{search_time}") (SUBJECT "验证" OR SUBJECT "verification" OR SUBJECT "code" OR SUBJECT "驗證") UNSEEN',
+                            f'(SINCE "{search_time}") (BODY "验证码" OR BODY "verification code" OR BODY "驗證碼") UNSEEN',
+                            
+                            # 所有最新邮件（包含M-Team相关）
+                            f'(SINCE "{search_time}") (FROM "m-team" OR SUBJECT "m-team" OR BODY "m-team") UNSEEN',
+                            f'(SINCE "{search_time}") (FROM "mteam" OR SUBJECT "mteam" OR BODY "mteam") UNSEEN',
+                            
+                            # 常见的PT站发送地址
+                            f'(SINCE "{search_time}") (FROM "web@m-team.cc" OR FROM "noreply@m-team.cc" OR FROM "admin@m-team.cc" OR FROM "system@m-team.cc") UNSEEN',
+                            f'(SINCE "{search_time}") (FROM "no-reply@m-team.cc" OR FROM "service@m-team.cc") UNSEEN',
+                            
+                            # 放宽时间限制的搜索
+                            f'(SUBJECT "验证" OR SUBJECT "verification" OR SUBJECT "code" OR SUBJECT "驗證") UNSEEN',
+                            f'(BODY "验证码" OR BODY "verification code" OR BODY "驗證碼") UNSEEN',
+                            
+                            # 最后尝试：所有未读邮件
+                            'UNSEEN'
+                        ]
+                        
+                        for criteria in search_criteria:
+                            try:
+                                status, messages = mail.search(None, criteria)
+                                if status == 'OK' and messages[0]:
+                                    message_ids = messages[0].split()
+                                    if message_ids:
+                                        # 获取最新的邮件（邮件ID通常是按时间排序的，最后一个是最新的）
+                                        latest_id = message_ids[-1]
+                                        self.logger.info(f"找到邮件ID: {latest_id}")
+                                        verification_code = self._extract_code_from_email(mail, latest_id, sent_after_time)
+                                        if verification_code:
+                                            self.logger.info(f"成功从最新邮件中提取验证码: {verification_code}")
+                                            mail.close()
+                                            mail.logout()
+                                            return verification_code
+                            except Exception as e:
+                                self.logger.debug(f"搜索条件 {criteria} 失败: {e}")
+                                continue
                     
-                    # 等待5秒后重试
-                    time.sleep(5)
-                    
-                except Exception as e:
-                    self.logger.error(f"IMAP搜索过程中发生错误: {e}")
-                    time.sleep(5)
+                    except Exception as search_error:
+                        self.logger.error(f"第{search_round + 1}轮搜索过程中发生错误: {search_error}")
+                        continue
+                
+                # 两轮搜索都没找到，等待3秒后重试（减少等待时间提高响应速度）
+                if time.time() - start_time < timeout - 3:  # 确保不会在超时边缘等待
+                    self.logger.debug("未找到新邮件，3秒后重试...")
+                    time.sleep(3)
                     
             mail.close()
             mail.logout()

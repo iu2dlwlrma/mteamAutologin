@@ -13,6 +13,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src'))
 
 from src.mteam_login import MTeamLogin
+from src.cache_cleaner import CacheCleaner
 
 def check_config():
     """检查配置文件是否存在和正确"""
@@ -119,6 +120,20 @@ def main():
     print("=" * 60)
     
     try:
+        # 检查并执行缓存清理
+        try:
+            cache_cleaner = CacheCleaner()
+            if cache_cleaner.should_cleanup():
+                print("🧹 检测到需要清理缓存...")
+                cache_cleaner.run_cleanup()
+            else:
+                status = cache_cleaner.get_cleanup_status()
+                if status.get("last_cleanup"):
+                    last_cleanup = status["last_cleanup"][:10]  # 只显示日期部分
+                    print(f"🗂️ 上次清理: {last_cleanup}, 下次清理: {status['next_cleanup'][:10] if status.get('next_cleanup') else '未设置'}")
+        except Exception as cache_error:
+            logging.warning(f"缓存清理检查失败: {cache_error}")
+        
         # 创建并运行登录器（使用默认配置路径）
         mteam_login = MTeamLogin()
         success = mteam_login.run()
