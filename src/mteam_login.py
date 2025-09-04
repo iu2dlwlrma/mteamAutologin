@@ -212,12 +212,8 @@ class MTeamLogin:
             raise FileNotFoundError(error_msg)
         
         # 设置Chrome浏览器路径
-        self.logger.info(f"✅ 设置Chrome二进制路径: {chrome_binary_path}")
-        self.logger.info(f"✅ 文件是否存在: {os.path.exists(chrome_binary_path)}")
+        self.logger.info(f"设置Chrome二进制路径: {chrome_binary_path}")
         chrome_options.binary_location = chrome_binary_path
-        
-        # 验证Chrome选项中的binary_location设置
-        self.logger.info(f"✅ Chrome选项中的binary_location: {getattr(chrome_options, 'binary_location', 'None')}")
         
         # 使用项目内ChromeDriver
         try:
@@ -382,179 +378,137 @@ class MTeamLogin:
             self.logger.info("等待页面跳转...")
             time.sleep(3)
             
-            # 检查浏览器会话是否还有效
-            try:
-                _ = self.driver.current_url
-                self.logger.info("浏览器会话正常")
-            except Exception as e:
-                self.logger.error(f"浏览器会话已断开: {e}")
-                return False
-            
-            # 检查页面跳转和状态
             current_url = self.driver.current_url
             page_title = self.driver.title
             self.logger.info(f"登录后URL: {current_url}")
             self.logger.info(f"登录后页面标题: {page_title}")
             
-            # 检查是否有错误信息（增强版，更多错误检测）
-            error_messages = []
-            error_selectors = [
-                "//div[contains(@class, 'error')]",
-                "//div[contains(@class, 'alert')]", 
-                "//div[contains(@class, 'danger')]",
-                "//span[contains(@class, 'error')]",
-                "//div[contains(text(), '错误')]",
-                "//div[contains(text(), '失败')]",
-                "//div[contains(text(), 'error')]",
-                "//div[contains(text(), 'failed')]",
-                "//div[contains(text(), '用户名')]",
-                "//div[contains(text(), '密码')]",
-                "//div[contains(text(), 'username')]",
-                "//div[contains(text(), 'password')]",
-                "//div[contains(text(), 'invalid')]",
-                "//div[contains(text(), 'incorrect')]"
-            ]
-            
-            for selector in error_selectors:
-                try:
-                    error_elements = self.driver.find_elements(By.XPATH, selector)
-                    for element in error_elements:
-                        if element.text.strip():
-                            error_messages.append(element.text.strip())
-                except:
-                    continue
-            
-            # 检查登录表单是否还存在（表明登录失败）
-            login_form_exists = False
-            try:
-                self.driver.find_element(By.ID, "username")
-                self.driver.find_element(By.ID, "password")
-                login_form_exists = True
-                self.logger.warning("🔍 检测到登录表单仍然存在，可能登录失败")
-            except:
-                pass
-            
+            # 检查页面错误信息
+            error_messages = self._check_page_errors()
             if error_messages:
-                self.logger.error(f"🚨 页面显示错误信息: {error_messages}")
+                self.logger.error(f"页面显示错误信息: {error_messages}")
                 return False
             
-            if login_form_exists and "login" in current_url.lower():
-                self.logger.warning("🔍 仍在登录页面且登录表单存在，检查用户名密码是否正确")
-                # 这里不直接返回False，而是继续检查是否需要邮箱验证
-            
-            # 🔑 关键修复：M-Team登录后不跳转页面，而是通过JavaScript切换div
-            # 因此需要先检查是否进入邮箱验证流程，而不是先判断URL跳转
-            
-            # 1. 优先检查是否跳转到邮箱验证页面 (M-Team的两步验证流程)
+            # M-Team登录后通过div切换，优先检查邮箱验证
             if self._is_email_verification_page():
-                self.logger.info("✅ 登录成功！检测到邮箱验证页面，开始处理邮箱验证...")
+                self.logger.info("检测到邮箱验证页面，开始处理邮箱验证...")
                 return self.handle_email_verification()
             
-            # 2. 如果没有邮箱验证，检查是否直接登录成功（URL跳转）
+            # 检查是否直接登录成功
             if self.is_login_successful():
-                self.logger.info("✅ M-Team 登录成功！")
+                self.logger.info("M-Team 登录成功！")
                 return True
             
-            # 3. 最后才判断登录失败
-            # 注意：即使仍在login页面，也可能是因为需要邮箱验证但检测失败
-            if login_form_exists and "login" in current_url.lower():
-                self.logger.error("❌ M-Team 登录失败 - 仍在登录页面且存在登录表单")
-                if error_messages:
-                    self.logger.error(f"🚨 错误信息: {', '.join(error_messages)}")
-                else:
-                    self.logger.error("💡 可能原因：用户名或密码错误")
+            # 最后判断登录失败
+            if self._has_login_form() and "login" in current_url.lower():
+                self.logger.error("M-Team 登录失败 - 仍在登录页面")
                 return False
-            else:
-                # 特殊情况：在login页面但没有表单，可能是页面加载问题
-                self.logger.warning("⚠️ 页面状态异常，无法确定登录结果")
-                return False
+            
+            self.logger.warning("页面状态异常，无法确定登录结果")
+            return False
                 
         except Exception as e:
             self.logger.error(f"登录过程中发生错误: {e}")
             return False
             
-    def _is_email_verification_page(self) -> bool:
-        """
-        检测是否在邮箱验证页面（优化版，减少等待时间）
+    def _check_page_errors(self) -> list:
+        """检查页面错误信息"""
+        error_messages = []
+        error_selectors = [
+            "//div[contains(@class, 'error') or contains(@class, 'alert') or contains(@class, 'danger')]",
+            "//div[contains(text(), '错误') or contains(text(), '失败') or contains(text(), 'error') or contains(text(), 'failed')]"
+        ]
         
-        Returns:
-            bool: 是否为邮箱验证页面
-        """
+        for selector in error_selectors:
+            try:
+                elements = self.driver.find_elements(By.XPATH, selector)
+                for element in elements:
+                    text = element.text.strip()
+                    if text:
+                        error_messages.append(text)
+            except:
+                continue
+        return error_messages
+    
+    def _has_login_form(self) -> bool:
+        """检查是否存在登录表单"""
         try:
-            current_url = self.driver.current_url
-            page_title = self.driver.title
+            self.driver.find_element(By.ID, "username")
+            self.driver.find_element(By.ID, "password")
+            return True
+        except:
+            return False
+
+    def _is_email_verification_page(self) -> bool:
+        """检测是否在邮箱验证页面"""
+        try:
+            # 检查URL和标题关键词
+            current_url = self.driver.current_url.lower()
+            page_title = self.driver.title.lower()
             
-            # 优先检查URL和标题（最快速的检查）
-            url_indicators = ["verify", "2fa", "verification", "email"]
-            if any(keyword in current_url.lower() for keyword in url_indicators):
-                self.logger.info(f"✅ URL中检测到邮箱验证关键词: {current_url}")
+            url_keywords = ["verify", "2fa", "verification", "email"]
+            title_keywords = ["验证", "verification", "2fa", "email"]
+            
+            if any(k in current_url for k in url_keywords) or any(k in page_title for k in title_keywords):
                 return True
             
-            title_indicators = ["验证", "verification", "2fa", "email"]
-            if any(keyword in page_title.lower() for keyword in title_indicators):
-                self.logger.info(f"✅ 标题中检测到邮箱验证关键词: {page_title}")
-                return True
-            
-            # 使用显式等待快速检查关键元素存在（专门针对M-Team的div切换）
-            wait = WebDriverWait(self.driver, 2)  # 稍微增加到2秒，给div切换时间
-            
-            # M-Team特有的邮箱验证元素
-            verification_elements = [
-                "//input[contains(@placeholder, '验证码')]",
-                "//input[contains(@placeholder, 'verification')]", 
-                "//input[contains(@placeholder, 'code')]",
-                "//input[contains(@placeholder, '輸入')]",  # 繁体中文
-                "//button[contains(text(), '获取验证码')]",
-                "//button[contains(text(), '獲取驗證碼')]",  # 繁体中文
-                "//button[contains(text(), '验证')]",
-                "//button[contains(text(), '驗證')]",  # 繁体中文
-                "//div[contains(@class, 'verification')]",
-                "//div[contains(@class, 'email-verify')]"
+            # 检查邮箱验证元素
+            wait = WebDriverWait(self.driver, 2)
+            verification_selectors = [
+                "//input[contains(@placeholder, '验证码') or contains(@placeholder, 'verification') or contains(@placeholder, 'code') or contains(@placeholder, '輸入')]",
+                "//button[contains(text(), '获取验证码') or contains(text(), '獲取驗證碼') or contains(text(), '验证') or contains(text(), '驗證')]",
+                "//div[contains(@class, 'verification') or contains(@class, 'email-verify')]"
             ]
             
-            for xpath in verification_elements:
+            for selector in verification_selectors:
                 try:
-                    element = wait.until(EC.presence_of_element_located((By.XPATH, xpath)))
-                    self.logger.info(f"✅ 找到邮箱验证元素: {xpath}")
-                    # 检查元素是否可见（因为可能有隐藏的元素）
+                    element = wait.until(EC.presence_of_element_located((By.XPATH, selector)))
                     if element.is_displayed():
-                        self.logger.info("✅ 邮箱验证元素可见，确认进入验证流程")
+                        self.logger.info(f"找到邮箱验证元素: {selector}")
                         return True
                 except TimeoutException:
                     continue
             
-            self.logger.info("❌ 邮箱验证页面检测结果: False")
             return False
             
         except Exception as e:
             self.logger.error(f"检测邮箱验证页面时发生错误: {e}")
             return False
 
+    def _find_element_by_selectors(self, selectors, description="元素"):
+        """通过多个选择器查找元素"""
+        for selector_info in selectors:
+            try:
+                if isinstance(selector_info, tuple):
+                    by, selector = selector_info
+                    return self.driver.find_element(by, selector)
+                else:
+                    return self.driver.find_element(By.XPATH, selector_info)
+            except:
+                continue
+        return None
+
+    def _click_element_safely(self, element):
+        """安全点击元素"""
+        try:
+            self.driver.execute_script("arguments[0].scrollIntoView(true);", element)
+            time.sleep(0.5)
+            element.click()
+            return True
+        except:
+            try:
+                self.driver.execute_script("arguments[0].click();", element)
+                return True
+            except:
+                return False
+
     def handle_email_verification(self) -> bool:
-        """
-        处理M-Team的邮箱验证流程
-        
-        Returns:
-            bool: 验证是否成功
-        """
+        """处理M-Team的邮箱验证流程"""
         try:
             self.logger.info("开始M-Team邮箱验证流程...")
             
-            # Step 1: 查找并填写邮箱输入框
-            email_input = None
-            email_selectors = [
-                (By.ID, "email")
-            ]
-
-            for by, selector in email_selectors:
-                try:
-                    self.logger.info(f"尝试查找邮箱输入框: {by} = {selector}")
-                    email_input = self.driver.find_element(by, selector)
-                    self.logger.info(f"成功找到邮箱输入框: {by} = {selector}")
-                    break
-                except TimeoutException:
-                    continue
-                    
+            # 填写邮箱地址
+            email_input = self._find_element_by_selectors([(By.ID, "email")])
             if email_input:
                 email_input.clear()
                 email_input.send_keys(self.config["gmail"]["email"])
@@ -562,190 +516,41 @@ class MTeamLogin:
             else:
                 self.logger.warning("未找到邮箱输入框，可能已预填充")
             
-            # Step 2: 查找并点击获取验证码按钮
-            send_code_button = None
+            # 查找并点击发送验证码按钮
             send_button_selectors = [
                 (By.XPATH, "//button[contains(@class, 'ant-btn-default') and contains(., '獲取驗證碼')]"),
-                (By.XPATH, "//button[contains(@class, 'ant-btn-default') and contains(., '获取验证码')]"),
-                (By.XPATH, "//button[contains(@class, 'ant-btn-default')]"),
                 (By.XPATH, "//button[contains(text(), '獲取驗證碼') or contains(text(), '获取验证码')]"),
-                (By.XPATH, "//button[@type='button' and contains(@class, 'ant-btn')]//span[contains(text(), '獲取驗證碼')]/.."),
-                (By.CSS_SELECTOR, "button.ant-btn-default"),
-                (By.CSS_SELECTOR, "button.ant-btn.ant-btn-default")
+                (By.CSS_SELECTOR, "button.ant-btn-default")
             ]
-            for by, selector in send_button_selectors:
-                try:
-                    self.logger.info(f"尝试查找发送验证码按钮: {selector}")
-                    # 先尝试找到按钮元素（不要求可点击）
-                    send_code_button = self.driver.find_element(by, selector)
-                    # 检查按钮状态
-                    is_disabled = send_code_button.get_attribute("disabled")
-                    button_text = send_code_button.text or ""
-                    self.logger.info(f"找到按钮: 文本='{button_text}', 禁用状态={is_disabled}")
-                    
-                    # 如果按钮被禁用，等待一段时间让它变为可用
-                    if is_disabled:
-                        self.logger.info("按钮当前被禁用，等待变为可用...")
-                        for wait_count in range(10):  # 等待最多10秒
-                            time.sleep(1)
-                            is_disabled = send_code_button.get_attribute("disabled")
-                            if not is_disabled:
-                                self.logger.info("按钮现在可用了！")
-                                break
-                        else:
-                            self.logger.info("按钮仍然被禁用，但将尝试强制点击")
-                    
-                    self.logger.info(f"成功找到发送验证码按钮: {selector}")
-                    break
-                    
-                except TimeoutException:
-                    self.logger.info(f"未找到按钮: {selector}")
-                    continue
-                    
-            # Step 3: 先查找验证码输入框
-            code_input = None
-            code_selectors = [
-                "//input[@placeholder='輸入6位數字驗證碼']",
-            ]
+            send_code_button = self._find_element_by_selectors(send_button_selectors, "发送验证码按钮")
             
-            for selector in code_selectors:
-                try:
-                    self.logger.info(f"尝试查找验证码输入框: {selector}")
-                    code_input = self.driver.find_element(By.XPATH, selector)
-                    self.logger.info(f"成功找到验证码输入框: {selector}")
-                    break
-                except TimeoutException:
-                    continue
+            if send_code_button:
+                if send_code_button.get_attribute("disabled"):
+                    time.sleep(2)  # 等待按钮可用
+                if self._click_element_safely(send_code_button):
+                    self.logger.info("成功点击发送验证码按钮")
+                    time.sleep(5)  # 等待邮件发送
+                else:
+                    self.logger.warning("点击发送验证码按钮失败")
                     
+            # 查找验证码输入框
+            code_selectors = ["//input[@placeholder='輸入6位數字驗證碼']"]
+            code_input = self._find_element_by_selectors(code_selectors, "验证码输入框")
             if not code_input:
                 self.logger.error("未找到验证码输入框")
-                
-                # 尝试查找所有输入框进行调试
-                all_inputs = self.driver.find_elements(By.TAG_NAME, "input")
-                self.logger.info(f"页面中共有 {len(all_inputs)} 个输入框:")
-                for i, inp in enumerate(all_inputs):
-                    try:
-                        inp_type = inp.get_attribute("type") or "未知"
-                        inp_name = inp.get_attribute("name") or "无"
-                        inp_id = inp.get_attribute("id") or "无"
-                        inp_placeholder = inp.get_attribute("placeholder") or "无"
-                        inp_class = inp.get_attribute("class") or "无"
-                        self.logger.info(f"  输入框{i+1}: type={inp_type}, name={inp_name}, id={inp_id}, placeholder={inp_placeholder}, class={inp_class}")
-                    except:
-                        continue
-                
                 return False
             
-            # Step 4: 点击发送验证码按钮（如果有）
-            if send_code_button:
-                self.logger.info("找到发送验证码按钮，准备点击...")
-                
-                try:
-                    # 确保按钮可见
-                    self.driver.execute_script("arguments[0].scrollIntoView(true);", send_code_button)
-                    time.sleep(1)
-                    
-                    # 检查按钮是否仍然被禁用
-                    is_disabled = send_code_button.get_attribute("disabled")
-                    if is_disabled:
-                        self.logger.info("按钮被禁用，尝试使用JavaScript强制点击...")
-                        self.driver.execute_script("arguments[0].click();", send_code_button)
-                    else:
-                        self.logger.info("按钮可用，使用普通点击...")
-                        send_code_button.click()
-                    
-                    self.logger.info("成功点击发送验证码按钮！")
-                    
-                    # 等待验证码发送到邮箱（减少等待时间提高效率）
-                    self.logger.info("等待验证码邮件发送...")
-                    time.sleep(5)  # 等待5秒确保邮件发送完成
-                    
-                except Exception as click_error:
-                    self.logger.error(f"点击发送验证码按钮失败: {click_error}")
-                    # 继续执行，可能验证码已经自动发送
-                
-            else:
-                self.logger.warning("使用选择器未找到按钮，尝试直接查找...")
-                
-                # 直接查找包含"獲取驗證碼"文本的按钮
-                try:
-                    all_buttons = self.driver.find_elements(By.TAG_NAME, "button")
-                    for btn in all_buttons:
-                        btn_text = btn.text.strip()
-                        if "獲取驗證碼" in btn_text or "获取验证码" in btn_text or "獲取" in btn_text:
-                            self.logger.info(f"直接找到按钮: {btn_text}")
-                            send_code_button = btn
-                            break
-                except Exception as e:
-                    self.logger.error(f"直接查找按钮时出错: {e}")
-                
-                # 如果找到了按钮，重新进入成功分支
-                if send_code_button:
-                    self.logger.info("直接查找成功！现在点击按钮...")
-                    try:
-                        # 确保按钮可见并可点击
-                        self.driver.execute_script("arguments[0].scrollIntoView(true);", send_code_button)
-                        time.sleep(1)
-                        
-                        # 尝试普通点击
-                        try:
-                            send_code_button.click()
-                        except:
-                            # 如果普通点击失败，使用JavaScript点击
-                            self.logger.info("普通点击失败，尝试JavaScript点击...")
-                            self.driver.execute_script("arguments[0].click();", send_code_button)
-                        
-                        self.logger.info("成功点击发送验证码按钮！")
-                        time.sleep(5)  # 等待验证码发送到邮箱
-                        
-                    except Exception as e:
-                        self.logger.error(f"点击发送验证码按钮失败: {e}")
-                else:
-                    self.logger.error("未找到发送验证码按钮！显示调试信息")
-                
-                # 无论如何都显示调试信息
-                try:
-                    all_buttons = self.driver.find_elements(By.TAG_NAME, "button")
-                    all_inputs = self.driver.find_elements(By.XPATH, "//input[@type='button' or @type='submit']")
-                    
-                    self.logger.info(f"页面中共有 {len(all_buttons)} 个button元素:")
-                    
-                    for i, btn in enumerate(all_buttons):
-                        try:
-                            btn_text = btn.text or "无文本"
-                            btn_type = btn.get_attribute("type") or "无"
-                            btn_class = btn.get_attribute("class") or "无"
-                            btn_id = btn.get_attribute("id") or "无"
-                            self.logger.info(f"  按钮{i+1}: text='{btn_text}', type={btn_type}, class={btn_class}, id={btn_id}")
-                        except Exception as btn_error:
-                            self.logger.warning(f"获取按钮{i+1}信息时出错: {btn_error}")
-                    
-                    self.logger.info(f"页面中共有 {len(all_inputs)} 个input按钮:")
-                    for i, btn in enumerate(all_inputs):
-                        try:
-                            btn_value = btn.get_attribute("value") or "无文本"
-                            btn_type = btn.get_attribute("type") or "无"
-                            btn_class = btn.get_attribute("class") or "无"
-                            self.logger.info(f"  输入按钮{i+1}: value='{btn_value}', type={btn_type}, class={btn_class}")
-                        except Exception as btn_error:
-                            self.logger.warning(f"获取输入按钮{i+1}信息时出错: {btn_error}")
-                            
-                except Exception as e:
-                    self.logger.error(f"获取页面元素时出错: {e}")
-                    return False
-            
-            # Step 5: 从Gmail获取最新验证码
+            # 从Gmail获取验证码
             self.logger.info("正在从Gmail获取最新验证码...")
             self.gmail_client = GmailClient(self.config["gmail"])
             
-            # 尝试获取验证码，最多重试5次
             verification_code = None
             for attempt in range(5):
                 self.logger.info(f"第{attempt+1}次尝试获取验证码...")
                 verification_code = self.gmail_client.get_verification_code(timeout=60)
                 if verification_code:
                     break
-                if attempt < 1:  # 不是最后一次尝试
+                if attempt < 4:  # 不是最后一次尝试
                     self.logger.info("等待5秒后重试...")
                     time.sleep(5)
             
@@ -755,43 +560,29 @@ class MTeamLogin:
                 
             self.logger.info(f"成功获取验证码: {verification_code}")
             
-            # Step 6: 立即填写验证码（code_input已在Step 3中找到）
-            
+            # 填写验证码并提交
             code_input.clear()
             code_input.send_keys(verification_code)
             self.logger.info("已输入验证码")
             
-            # Step 7: 查找并点击登录按钮
-            login_button = None
-            login_selectors = [
-                "//button[@type='submit']",
-            ]
-            
-            for selector in login_selectors:
-                try:
-                    self.logger.info(f"尝试查找登录按钮: {selector}")
-                    login_button = self.driver.find_element(By.XPATH, selector)
-                    self.logger.info(f"成功找到登录按钮: {selector}")
-                    break
-                except NoSuchElementException:
-                    continue
-                    
+            # 查找并点击登录按钮
+            login_button = self._find_element_by_selectors(["//button[@type='submit']"], "登录按钮")
             if not login_button:
                 self.logger.error("未找到登录按钮")
                 return False
                 
-            login_button.click()
-            self.logger.info("已点击登录按钮，等待验证结果...")
-            
-            time.sleep(5)
-            
-            # Step 8: 检查验证是否成功
-            if self.is_login_successful():
-                self.logger.info("邮箱验证成功，登录完成！")
-                return True
+            if self._click_element_safely(login_button):
+                self.logger.info("已点击登录按钮，等待验证结果...")
+                time.sleep(5)
+                
+                if self.is_login_successful():
+                    self.logger.info("邮箱验证成功，登录完成！")
+                    return True
+                else:
+                    self.logger.error("邮箱验证失败或登录失败")
+                    return False
             else:
-                self.logger.error("邮箱验证失败或登录失败")
-
+                self.logger.error("点击登录按钮失败")
                 return False
                 
         except Exception as e:
@@ -799,60 +590,39 @@ class MTeamLogin:
             return False
             
     def is_login_successful(self) -> bool:
-        """
-        检查是否登录成功（优化版，减少等待时间）
-        
-        Returns:
-            bool: 是否登录成功
-        """
+        """检查是否登录成功"""
         try:
-            current_url = self.driver.current_url
+            current_url = self.driver.current_url.lower()
             page_title = self.driver.title
             
-            self.logger.info(f"检查登录状态 - URL: {current_url}")
-            self.logger.info(f"检查登录状态 - 标题: {page_title}")
-            
-            # 1. 检查URL：注意M-Team登录后可能仍在login页面（div切换）
-            # 所以不能简单地因为包含"login"就判断失败
-            if "login" in current_url.lower():
-                # 需要进一步检查页面内容来确定是否真的失败
-                self.logger.info("📍 仍在login页面，需要进一步检查页面内容...")
-            
-            # 2. 快速检查：URL跳转成功是最可靠的标志
+            # 检查URL跳转
             success_urls = ['index', 'home', 'main', 'dashboard', 'user', 'member', 'browse', 'torrents']
-            if any(keyword in current_url.lower() for keyword in success_urls):
-                self.logger.info(f"✅ URL跳转成功: {current_url}")
+            if any(keyword in current_url for keyword in success_urls):
+                self.logger.info(f"URL跳转成功: {current_url}")
                 return True
             
-            # 3. 快速检查：页面标题改变通常表示登录成功
+            # 检查页面标题变化
             if "登录" not in page_title and "login" not in page_title.lower() and page_title.strip():
-                self.logger.info(f"✅ 页面标题已改变，登录成功: {page_title}")
                 return True
                 
-            # 4. 简化的元素检查（只检查最常见的几个，使用显式等待）
-            wait = WebDriverWait(self.driver, 1)  # 只等待1秒
-            
-            # 优先检查最可能存在的元素
-            quick_check_elements = [
-                "//a[contains(@href, 'logout')]",      # 退出链接最常见
-                "//a[contains(text(), '退出')]",        # 中文退出链接
-                "//div[contains(@class, 'user')]"      # 用户相关div
+            # 检查登录成功元素
+            wait = WebDriverWait(self.driver, 1)
+            success_elements = [
+                "//a[contains(@href, 'logout') or contains(text(), '退出')]",
+                "//div[contains(@class, 'user')]"
             ]
             
-            for xpath in quick_check_elements:
+            for selector in success_elements:
                 try:
-                    element = wait.until(EC.presence_of_element_located((By.XPATH, xpath)))
-                    self.logger.info(f"✅ 找到登录标志元素: {xpath}")
+                    wait.until(EC.presence_of_element_located((By.XPATH, selector)))
                     return True
                 except TimeoutException:
                     continue
             
-            # 5. 最后检查：页面内容判断（不在登录页面且有足够内容）
-            if "login" not in current_url.lower() and len(self.driver.page_source) > 5000:
-                self.logger.info("✅ 页面内容丰富且不在登录页面，判断为登录成功")
+            # 页面内容判断
+            if "login" not in current_url and len(self.driver.page_source) > 5000:
                 return True
                 
-            self.logger.info("❌ 所有快速检查都未通过，登录可能失败")
             return False
             
         except Exception as e:
@@ -866,12 +636,7 @@ class MTeamLogin:
             self.logger.info("浏览器已关闭")
             
     def run(self) -> bool:
-        """
-        运行完整的登录流程
-        
-        Returns:
-            bool: 登录是否成功
-        """
+        """运行完整的登录流程"""
         try:
             success = self.login_to_mteam()
             return success
@@ -880,7 +645,6 @@ class MTeamLogin:
 
 
 def main():
-    """主函数"""
     try:
         mteam_login = MTeamLogin()
         success = mteam_login.run()

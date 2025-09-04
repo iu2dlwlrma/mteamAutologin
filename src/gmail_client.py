@@ -221,23 +221,36 @@ class GmailClient:
             
             if not body:
                 return None
+            
+            # 记录邮件内容以便调试（截取前200字符）
+            self.logger.debug(f"邮件正文预览: {body[:200]}...")
                 
-            # 常见的验证码模式
+            # 优化的验证码匹配模式（优先匹配数字验证码）
             patterns = [
-                r'验证码[：:\s]*([A-Za-z0-9]{4,8})',
-                r'verification code[：:\s]*([A-Za-z0-9]{4,8})',
-                r'code[：:\s]*([A-Za-z0-9]{4,8})',
-                r'([A-Za-z0-9]{4,8})',  # 通用数字字母组合
-                r'(\d{4,8})',  # 纯数字验证码
+                r'(\d{6})',  # 6位纯数字验证码（M-Team最常用）
+                r'(\d{4,8})',  # 4-8位纯数字验证码
+                r'验证码[：:\s]*(\d{4,8})',  # 中文+数字
+                r'verification code[：:\s]*(\d{4,8})',  # 英文+数字  
+                r'code[：:\s]*(\d{4,8})',  # code+数字
+                r'验证码[：:\s]*([A-Za-z0-9]{4,8})',  # 中文+字母数字
+                r'verification code[：:\s]*([A-Za-z0-9]{4,8})',  # 英文+字母数字
+                r'(?:^|\s)([A-Z0-9]{6})(?:\s|$)',  # 独立的6位大写字母数字组合
             ]
             
             for pattern in patterns:
-                match = re.search(pattern, body, re.IGNORECASE)
-                if match:
-                    code = match.group(1).strip()
-                    if len(code) >= 4:  # 验证码至少4位
-                        self.logger.info(f"从邮件中提取到验证码: {code}")
-                        return code
+                matches = re.findall(pattern, body, re.IGNORECASE | re.MULTILINE)
+                for code in matches:
+                    code = code.strip()
+                    # 验证码长度和格式检查
+                    if len(code) >= 4 and not code.lower() in ['image', 'style', 'class', 'width', 'height', 'color']:
+                        # 进一步验证：如果是6位数字，优先返回
+                        if len(code) == 6 and code.isdigit():
+                            self.logger.info(f"从邮件中提取到6位数字验证码: {code}")
+                            return code
+                        # 其他格式的验证码
+                        elif len(code) >= 4:
+                            self.logger.info(f"从邮件中提取到验证码: {code}")
+                            return code
                         
             self.logger.warning("未能从邮件中提取验证码")
             return None
