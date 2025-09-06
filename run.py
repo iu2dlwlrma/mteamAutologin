@@ -10,7 +10,8 @@ import json
 import logging
 from pathlib import Path
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src'))
+sys.path.insert(0, os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), 'src'))
 
 from src.mteam_login import MTeamLogin
 
@@ -20,29 +21,29 @@ def check_config():
         "config/config.json",
         "config.json",
     ]
-    
+
     config_file = None
     for path in possible_config_paths:
         if os.path.exists(path):
             config_file = path
             break
-    
+
     if config_file is None:
         print("❌ 配置文件不存在！")
         print("请先运行 'python install.py' 创建配置文件")
         return False
-        
+
     try:
         with open(config_file, 'r', encoding='utf-8') as f:
             config = json.load(f)
-            
+
         required_fields = [
-            ("mteam", "username"), 
+            ("mteam", "username"),
             ("mteam", "password"),
             ("gmail", "email"),
             ("gmail", "password")
         ]
-        
+
         for field_path in required_fields:
             current = config
             for key in field_path:
@@ -50,20 +51,21 @@ def check_config():
                     print(f"❌ 配置文件缺少必要字段: {'.'.join(field_path)}")
                     return False
                 current = current[key]
-                
+
             if isinstance(current, str) and current.startswith("your_"):
                 print(f"❌ 请修改配置文件中的 {'.'.join(field_path)} 字段")
                 return False
-                
+
         print("✅ 配置文件检查通过")
         return True
-        
+
     except json.JSONDecodeError:
         print("❌ 配置文件格式错误，请检查JSON语法")
         return False
     except Exception as e:
         print(f"❌ 读取配置文件时发生错误: {e}")
         return False
+
 
 def print_banner():
     """打印程序标题"""
@@ -76,6 +78,7 @@ def print_banner():
 ╚══════════════════════════════════════════════════════════════╝
     """
     print(banner)
+
 
 def show_usage():
     """显示使用说明"""
@@ -106,23 +109,24 @@ def show_usage():
     """
     print(usage)
 
+
 def main():
     """主函数"""
     print_banner()
-    
+
     # 检查配置文件
     if not check_config():
         show_usage()
         return
-        
+
     print("🚀 开始执行M-Team自动登录...")
     print("=" * 60)
-    
+
     try:
         # 创建并运行登录器（使用默认配置路径）
         mteam_login = MTeamLogin()
         success = mteam_login.run()
-        
+
         print("=" * 60)
         if success:
             print("🎉 恭喜！M-Team自动登录成功！")
@@ -130,10 +134,10 @@ def main():
         else:
             print("😞 M-Team自动登录失败，请检查以下项目:")
             print("   - 用户名和密码是否正确")
-            print("   - 网络连接是否正常") 
+            print("   - 网络连接是否正常")
             print("   - Gmail配置是否正确")
             print("   - ChromeDriver是否正常工作")
-            
+
     except FileNotFoundError as e:
         error_str = str(e)
         if "Chrome浏览器未找到" in error_str or "ChromeDriver未找到" in error_str:
@@ -148,8 +152,9 @@ def main():
     except Exception as e:
         print(f"❌ 运行时错误: {e}")
         logging.exception("详细错误信息:")
-        
+
     print("\n📋 运行完成，查看 logs/ 目录中的日志文件获取详细信息")
 
+
 if __name__ == "__main__":
-    main() 
+    main()
