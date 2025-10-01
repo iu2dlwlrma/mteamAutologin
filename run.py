@@ -9,11 +9,62 @@ import os
 import json
 import logging
 from pathlib import Path
+from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.abspath(__file__)), 'src'))
 
 from src.mteam_login import MTeamLogin
+
+def get_last_run_time():
+    """获取上次运行时间"""
+    timestamp_file = "last_run.timestamp"
+    try:
+        if os.path.exists(timestamp_file):
+            with open(timestamp_file, 'r', encoding='utf-8') as f:
+                timestamp_str = f.read().strip()
+                return datetime.fromisoformat(timestamp_str)
+        return None
+    except Exception as e:
+        print(f"⚠️  读取上次运行时间时发生错误: {e}")
+        return None
+
+
+def save_last_run_time():
+    """保存当前运行时间"""
+    timestamp_file = "last_run.timestamp"
+    try:
+        current_time = datetime.now()
+        with open(timestamp_file, 'w', encoding='utf-8') as f:
+            f.write(current_time.isoformat())
+        return True
+    except Exception as e:
+        print(f"⚠️  保存运行时间时发生错误: {e}")
+        return False
+
+
+def should_run_login():
+    """判断是否应该执行登录"""
+    last_run = get_last_run_time()
+    
+    if last_run is None:
+        print("📅 首次运行，执行登录操作")
+        return True
+    
+    current_time = datetime.now()
+    time_diff = current_time - last_run
+    
+    if time_diff >= timedelta(days=1):
+        print(f"📅 上次运行时间: {last_run.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"📅 已经过去 {time_diff.days} 天 {time_diff.seconds//3600} 小时，执行登录操作")
+        return True
+    else:
+        hours_left = 24 - (time_diff.total_seconds() / 3600)
+        print(f"📅 上次运行时间: {last_run.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"⏰ 距离上次运行不足1天，还需等待 {hours_left:.1f} 小时")
+        print("⏭️  跳过本次登录操作")
+        return False
+
 
 def check_config():
     """检查配置文件是否存在和正确"""
@@ -119,6 +170,12 @@ def main():
         show_usage()
         return
 
+    # 检查是否需要执行登录（时间间隔检查）
+    if not should_run_login():
+        print("=" * 60)
+        print("✅ 程序正常结束")
+        return
+
     print("🚀 开始执行M-Team自动登录...")
     print("=" * 60)
 
@@ -131,6 +188,9 @@ def main():
         if success:
             print("🎉 恭喜！M-Team自动登录成功！")
             print("📧 如果需要邮箱验证，验证码已自动获取并填入")
+            # 保存成功登录的时间戳
+            if save_last_run_time():
+                print("💾 已更新上次运行时间记录")
         else:
             print("😞 M-Team自动登录失败，请检查以下项目:")
             print("   - 用户名和密码是否正确")
