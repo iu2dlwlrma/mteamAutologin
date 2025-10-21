@@ -6,8 +6,8 @@ echo Running auto installer (will create virtual environment)...
 where python >nul 2>&1
 if %errorlevel% == 0 (
     python install.py
-) else if exist "%USERPROFILE%\AppData\Local\Microsoft\WindowsApps\python.exe" (
-    "%USERPROFILE%\AppData\Local\Microsoft\WindowsApps\python.exe" install.py
+) else if exist "%USERPROFILE%\AppData\Local\Programs\Python\Python313\python.exe" (
+    "%USERPROFILE%\AppData\Local\Programs\Python\Python313\python.exe" install.py
 ) else if exist "python.exe" (
     python install.py
 ) else if exist "py.exe" (
@@ -32,8 +32,8 @@ if exist "venv\Scripts\python.exe" (
     where python >nul 2>&1
     if %errorlevel% == 0 (
         python run.py
-    ) else if exist "%USERPROFILE%\AppData\Local\Microsoft\WindowsApps\python.exe" (
-        "%USERPROFILE%\AppData\Local\Microsoft\WindowsApps\python.exe" run.py
+    ) else if exist "%USERPROFILE%\AppData\Local\Programs\Python\Python313\python.exe" (
+        "%USERPROFILE%\AppData\Local\Programs\Python\Python313\python.exe" run.py
     ) else if exist "python.exe" (
         python run.py
     ) else if exist "py.exe" (
