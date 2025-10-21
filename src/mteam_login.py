@@ -668,7 +668,7 @@ class MTeamLogin:
 
             # 从Gmail获取验证码
             self.logger.info("正在从Gmail获取最新验证码...")
-            self.gmail_client = GmailClient(self.config["gmail"])
+            self.gmail_client = GmailClient(self.config)
 
             verification_code = None
             for attempt in range(5):

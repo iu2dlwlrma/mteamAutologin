@@ -4,3 +4,4 @@ logs/
 config/
 venv/
 chrome_user_data/
+last_run.timestamp

@@ -21,9 +21,10 @@ class GmailClient:
         初始化Gmail客户端
 
         Args:
-            config: Gmail配置，包含邮箱账号和密码
+            config: 完整配置字典，包含gmail配置和email_management配置
         """
         self.config = config
+        self.gmail_config = config.get("gmail", {})
         # 使用根logger确保日志正常输出
         self.logger = logging.getLogger()
 
@@ -41,7 +42,7 @@ class GmailClient:
         try:
             # 连接到Gmail IMAP服务器（增强稳定性）
             self.logger.info(
-                f"正在连接Gmail IMAP服务器 (邮箱: {self.config['email'][:3]}***{self.config['email'][-10:]})")
+                f"正在连接Gmail IMAP服务器 (邮箱: {self.gmail_config['email'][:3]}***{self.gmail_config['email'][-10:]})")
 
             # 创建更稳定的SSL上下文
             context = ssl.create_default_context()
@@ -77,7 +78,7 @@ class GmailClient:
 
             for auth_retry in range(max_auth_retries):
                 try:
-                    mail.login(self.config["email"], self.config["password"])
+                    mail.login(self.gmail_config["email"], self.gmail_config["password"])
                     self.logger.info("✅ Gmail IMAP认证成功")
                     break
                 except imaplib.IMAP4.error as login_error:
